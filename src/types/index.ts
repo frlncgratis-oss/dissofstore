@@ -25,10 +25,10 @@ export interface Category {
   id: string;
   name: string;
   slug: string;
-  description: string;
+  description?: string;
   icon?: string;
   image?: string;
-  display_order: number;
+  display_order?: number;
 }
 
 export interface OrderItem {
@@ -51,10 +51,24 @@ export interface Order {
   shipping_fee?: number;
   total: number;
   order_notes?: string;
+  notes?: string;
   source: 'whatsapp' | 'online';
+  payment_method?: 'bank_transfer' | 'qris' | 'whatsapp';
+  payment_proof_url?: string;
   status: 'Pending' | 'Processing' | 'Completed' | 'Cancelled';
   created_at: string;
   updated_at: string;
+}
+
+export interface PaymentSettings {
+  bank_name: string;
+  account_number: string;
+  account_holder: string;
+  qris_image?: string;
+  qris_label?: string;
+  instructions?: string;
+  is_enabled: boolean;
+  notes?: string;
 }
 
 export interface CustomRequest {

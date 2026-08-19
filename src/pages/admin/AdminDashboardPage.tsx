@@ -46,19 +46,40 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
         }
       }
 
+      let ordersList: Order[] = [];
+      const savedOrdersRaw = localStorage.getItem('orders');
+      if (savedOrdersRaw) {
+        try {
+          const parsed = JSON.parse(savedOrdersRaw);
+          if (Array.isArray(parsed)) {
+            ordersList = parsed;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const [s, o, c] = await Promise.all([
         api.getStats().catch(() => null),
-        api.getOrders().catch(() => []),
+        ordersList.length > 0 ? Promise.resolve(ordersList) : api.getOrders().catch(() => []),
         customsList.length > 0 ? Promise.resolve(customsList) : api.getCustomRequests().catch(() => []),
       ]);
 
+      const finalOrders = ordersList.length > 0 ? ordersList : o;
       const finalCustoms = customsList.length > 0 ? customsList : c;
+      
+      const totalRevenue = finalOrders.reduce((acc: number, curr: Order) => acc + (curr.total || 0), 0);
+      const pendingOrders = finalOrders.filter((item: Order) => item.status === 'Pending').length;
+
       setStats({
         ...s,
+        totalOrders: finalOrders.length,
+        pendingOrders: pendingOrders,
+        totalRevenue: totalRevenue || s?.totalRevenue || 0,
         totalCustomRequests: finalCustoms.length,
         newCustomRequests: finalCustoms.filter((item: CustomRequest) => item.status === 'New').length,
       });
-      setRecentOrders(o.slice(0, 5));
+      setRecentOrders(finalOrders.slice(0, 5));
       setRecentCustoms(finalCustoms.slice(0, 5));
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);

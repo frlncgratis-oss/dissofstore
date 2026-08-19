@@ -20,6 +20,7 @@ import { AdminCustomRequestsPage } from './pages/admin/AdminCustomRequestsPage';
 import { AdminEventsPage } from './pages/admin/AdminEventsPage';
 import { AdminTestimonialsPage } from './pages/admin/AdminTestimonialsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
+import { AdminPaymentSettingsPage } from './pages/admin/AdminPaymentSettingsPage';
 import { AdminChangePasswordPage } from './pages/admin/AdminChangePasswordPage';
 import { Product } from './types';
 
@@ -82,6 +83,7 @@ const MainApp: React.FC = () => {
         )}
         {currentAdminTab === 'products' && <AdminProductsPage />}
         {currentAdminTab === 'orders' && <AdminOrdersPage />}
+        {currentAdminTab === 'payment-settings' && <AdminPaymentSettingsPage />}
         {currentAdminTab === 'custom-requests' && <AdminCustomRequestsPage />}
         {currentAdminTab === 'events' && <AdminEventsPage />}
         {currentAdminTab === 'testimonials' && <AdminTestimonialsPage />}

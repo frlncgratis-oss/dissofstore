@@ -24,7 +24,7 @@ import { formatIDR, compressImageFile } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
 
 export const AdminProductsPage: React.FC = () => {
-  const { products, categories, saveProductLocal, deleteProductLocal, refreshData } = useStore();
+  const { products, categories, saveProductLocal, deleteProductLocal, saveCategoryLocal, refreshData } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   
@@ -39,6 +39,9 @@ export const AdminProductsPage: React.FC = () => {
   // Form state
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
   const [price, setPrice] = useState('');
   const [originalPrice, setOriginalPrice] = useState('');
   const [stock, setStock] = useState('10');
@@ -69,6 +72,8 @@ export const AdminProductsPage: React.FC = () => {
     setEditingProduct(null);
     setName('');
     setCategoryId(categories[0]?.id || 'bracelets');
+    setIsAddingNewCategory(false);
+    setNewCategoryInput('');
     setPrice('');
     setOriginalPrice('');
     setStock('15');
@@ -89,6 +94,8 @@ export const AdminProductsPage: React.FC = () => {
     setEditingProduct(product);
     setName(product.name || '');
     setCategoryId(product.category_id || categories[0]?.id || 'bracelets');
+    setIsAddingNewCategory(false);
+    setNewCategoryInput('');
     setPrice(product.price != null ? String(product.price) : '');
     setOriginalPrice(product.original_price != null ? String(product.original_price) : '');
     setStock(String(product.stock ?? 10));
@@ -107,6 +114,23 @@ export const AdminProductsPage: React.FC = () => {
     setIsVisible(product.is_visible !== false);
     setErrorMsg('');
     setModalOpen(true);
+  };
+
+  const handleAddNewCategory = async () => {
+    if (!newCategoryInput.trim()) return;
+    setSavingCategory(true);
+    setErrorMsg('');
+    try {
+      const created = await saveCategoryLocal(newCategoryInput.trim());
+      setCategoryId(created.id);
+      setNewCategoryInput('');
+      setIsAddingNewCategory(false);
+      showToast(`Kategori "${created.name}" berhasil disimpan ke LocalStorage!`);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal menambahkan kategori baru.');
+    } finally {
+      setSavingCategory(false);
+    }
   };
 
   // Upload and compress files from mobile gallery / PC camera
@@ -793,20 +817,69 @@ export const AdminProductsPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-[#2D2D2D]">
-                    Kategori <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-black/10 bg-[#F9F7F2] text-xs focus:outline-none focus:ring-1 focus:ring-[#FF9AA2] font-medium"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-[#2D2D2D]">
+                      Kategori <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingNewCategory(!isAddingNewCategory);
+                        setNewCategoryInput('');
+                      }}
+                      className="text-[11px] text-[#FF9AA2] hover:text-pink-700 font-bold cursor-pointer transition-colors"
+                    >
+                      {isAddingNewCategory ? '← Pilih dari Daftar' : '+ Tambah Kategori Baru'}
+                    </button>
+                  </div>
+
+                  {isAddingNewCategory ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Ketik kategori baru (contoh: Hair Clips / Brooch)..."
+                        value={newCategoryInput}
+                        onChange={(e) => setNewCategoryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddNewCategory();
+                          }
+                        }}
+                        className="flex-1 px-3.5 py-2.5 rounded-xl border border-pink-300 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-[#FF9AA2] font-medium"
+                      />
+                      <button
+                        type="button"
+                        disabled={savingCategory || !newCategoryInput.trim()}
+                        onClick={handleAddNewCategory}
+                        className="px-3.5 py-2.5 bg-[#2D2D2D] hover:bg-black text-white font-bold rounded-xl text-xs disabled:opacity-50 cursor-pointer transition-colors shrink-0"
+                      >
+                        {savingCategory ? 'Menyimpan...' : 'Simpan'}
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={categoryId}
+                      onChange={(e) => {
+                        if (e.target.value === '__add_new__') {
+                          setIsAddingNewCategory(true);
+                        } else {
+                          setCategoryId(e.target.value);
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-black/10 bg-[#F9F7F2] text-xs focus:outline-none focus:ring-1 focus:ring-[#FF9AA2] font-medium cursor-pointer"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                      <option value="__add_new__" className="text-pink-600 font-bold">
+                        + Tambah Kategori Baru...
                       </option>
-                    ))}
-                  </select>
+                    </select>
+                  )}
                 </div>
               </div>
 

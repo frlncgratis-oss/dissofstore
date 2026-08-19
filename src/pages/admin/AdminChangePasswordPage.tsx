@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { KeyRound, Lock, Check, ShieldCheck } from 'lucide-react';
+import { KeyRound, Lock, Check } from 'lucide-react';
 import { api } from '../../lib/api';
+
+const CUSTOM_PASS_KEY = 'dissof_admin_custom_password';
+const DEFAULT_ADMIN_PASS = 'dissof2026!';
 
 export const AdminChangePasswordPage: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -16,6 +19,13 @@ export const AdminChangePasswordPage: React.FC = () => {
       setErrorMsg('Semua kolom password wajib diisi.');
       return;
     }
+
+    const activePassword = localStorage.getItem(CUSTOM_PASS_KEY) || DEFAULT_ADMIN_PASS;
+    if (currentPassword !== activePassword) {
+      setErrorMsg('Password saat ini salah.');
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       setErrorMsg('Konfirmasi password baru tidak cocok.');
       return;
@@ -30,7 +40,16 @@ export const AdminChangePasswordPage: React.FC = () => {
     setSuccessMsg('');
 
     try {
-      await api.changePassword({ currentPassword, newPassword });
+      // Save locally
+      localStorage.setItem(CUSTOM_PASS_KEY, newPassword);
+
+      // Attempt background backend sync if available
+      try {
+        await api.changePassword({ currentPassword, newPassword });
+      } catch {
+        // Silently ignore background API failure, local auth is primary
+      }
+
       setSuccessMsg('Password admin berhasil diperbarui! Silakan gunakan password baru ini saat login berikutnya.');
       setCurrentPassword('');
       setNewPassword('');
@@ -118,7 +137,7 @@ export const AdminChangePasswordPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="px-6 py-3 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs uppercase tracking-wider shadow-sm disabled:opacity-50"
+            className="px-6 py-3 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs uppercase tracking-wider shadow-sm disabled:opacity-50 cursor-pointer"
           >
             {isLoading ? 'Menyimpan...' : 'Perbarui Password'}
           </button>

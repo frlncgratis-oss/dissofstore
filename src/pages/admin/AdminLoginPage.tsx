@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, User, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface AdminLoginPageProps {
@@ -35,11 +35,6 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
     }
   };
 
-  const handleFillDemo = () => {
-    setUsername('admin');
-    setPassword('dissof2026!');
-  };
-
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 sm:px-6 py-12">
       <div className="w-full max-w-md bg-white rounded-3xl p-7 sm:p-10 border border-pink-100 shadow-xl space-y-6">
@@ -57,23 +52,8 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
           </p>
         </div>
 
-        {/* Demo Credentials Helper Pill */}
-        <div className="bg-pink-50/70 border border-pink-200 rounded-2xl p-3 text-xs text-[#6B5A51] flex items-center justify-between gap-2">
-          <div>
-            <span className="font-bold text-pink-700 block">Default Admin Login:</span>
-            <span>User: <b>admin</b> | Pass: <b>dissof2026!</b></span>
-          </div>
-          <button
-            type="button"
-            onClick={handleFillDemo}
-            className="px-2.5 py-1 bg-white border border-pink-300 text-pink-700 rounded-lg text-[10px] font-bold hover:bg-pink-100 transition-colors shadow-2xs shrink-0"
-          >
-            Auto-fill
-          </button>
-        </div>
-
         {errorMsg && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium">
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium shadow-xs">
             {errorMsg}
           </div>
         )}
@@ -88,7 +68,8 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
             <input
               type="text"
               required
-              placeholder="Username admin"
+              autoComplete="username"
+              placeholder="Masukkan username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-400 bg-[#FFFDFB]"
@@ -104,6 +85,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -113,6 +95,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-pink-600"
+                tabIndex={-1}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -122,7 +105,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             <span>{isLoading ? 'Memverifikasi...' : 'MASUK KE DASHBOARD'}</span>
             <ArrowRight className="w-4 h-4" />
@@ -131,8 +114,9 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess, onBac
 
         <div className="text-center pt-2">
           <button
+            type="button"
             onClick={onBackToStore}
-            className="text-xs font-semibold text-[#8C7D75] hover:text-pink-600 transition-colors"
+            className="text-xs font-semibold text-[#8C7D75] hover:text-pink-600 transition-colors cursor-pointer"
           >
             ← Kembali ke Website Customer
           </button>

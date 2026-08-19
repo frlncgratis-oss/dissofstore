@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { KeyRound, Lock, Check } from 'lucide-react';
+import { KeyRound, Lock, Check, ShieldCheck } from 'lucide-react';
 import { api } from '../../lib/api';
 
-const CUSTOM_PASS_KEY = 'dissof_admin_custom_password';
+const ADMIN_PASSWORD_KEY = 'adminPassword';
 const DEFAULT_ADMIN_PASS = 'dissof2026!';
 
 export const AdminChangePasswordPage: React.FC = () => {
@@ -15,12 +15,12 @@ export const AdminChangePasswordPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentPassword || !newPassword) {
+    if (!currentPassword.trim() || !newPassword.trim()) {
       setErrorMsg('Semua kolom password wajib diisi.');
       return;
     }
 
-    const activePassword = localStorage.getItem(CUSTOM_PASS_KEY) || DEFAULT_ADMIN_PASS;
+    const activePassword = localStorage.getItem(ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASS;
     if (currentPassword !== activePassword) {
       setErrorMsg('Password saat ini salah.');
       return;
@@ -40,8 +40,8 @@ export const AdminChangePasswordPage: React.FC = () => {
     setSuccessMsg('');
 
     try {
-      // Save locally
-      localStorage.setItem(CUSTOM_PASS_KEY, newPassword);
+      // Save permanently to LocalStorage under 'adminPassword'
+      localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword);
 
       // Attempt background backend sync if available
       try {
@@ -50,7 +50,7 @@ export const AdminChangePasswordPage: React.FC = () => {
         // Silently ignore background API failure, local auth is primary
       }
 
-      setSuccessMsg('Password admin berhasil diperbarui! Silakan gunakan password baru ini saat login berikutnya.');
+      setSuccessMsg('Password admin berhasil diperbarui dan tersimpan! Silakan gunakan password baru ini saat login berikutnya.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -74,14 +74,14 @@ export const AdminChangePasswordPage: React.FC = () => {
       </div>
 
       {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-4 rounded-2xl flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successMsg}</span>
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-4 rounded-2xl flex items-center gap-2 shadow-xs animate-in fade-in duration-200">
+          <Check className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span className="font-medium leading-relaxed">{successMsg}</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-4 rounded-2xl">
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-4 rounded-2xl shadow-xs animate-in fade-in duration-200">
           {errorMsg}
         </div>
       )}

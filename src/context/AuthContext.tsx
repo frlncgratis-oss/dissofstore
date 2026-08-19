@@ -5,7 +5,7 @@ const DEFAULT_ADMIN_USER = 'admin';
 const DEFAULT_ADMIN_PASS = 'dissof2026!';
 const TOKEN_KEY = 'dissof_admin_token';
 const USER_KEY = 'dissof_admin_user';
-const CUSTOM_PASS_KEY = 'dissof_admin_custom_password';
+const ADMIN_PASSWORD_KEY = 'adminPassword';
 
 interface AuthContextType {
   user: AdminUser | null;
@@ -79,8 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const inputUser = credentials.username.trim().toLowerCase();
       const inputPass = credentials.password.trim();
 
-      // Retrieve current valid password (either customized or default)
-      const validPassword = localStorage.getItem(CUSTOM_PASS_KEY) || DEFAULT_ADMIN_PASS;
+      // Retrieve current valid password from 'adminPassword' in LocalStorage, or fallback to default 'dissof2026!'
+      const validPassword = localStorage.getItem(ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASS;
 
       if (inputUser === DEFAULT_ADMIN_USER && inputPass === validPassword) {
         const adminUserData: AdminUser = {
@@ -97,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(authToken);
         setUser(adminUserData);
       } else {
-        throw new Error('Username atau password salah. Gunakan username "admin" dan password "dissof2026!".');
+        throw new Error('Username atau password salah. Silakan periksa kembali.');
       }
     } finally {
       setIsLoading(false);

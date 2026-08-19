@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: 'Plus Jakarta Sans', 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    scroll-behavior: smooth;
+  }
+}
+
+.font-quicksand {
+  font-family: 'Quicksand', sans-serif;
+}
+
+.font-playfair {
+  font-family: 'Playfair Display', serif;
+}
+
+.font-fredoka {
+  font-family: 'Fredoka', cursive, sans-serif;
+}
+
+/* Custom aesthetic pastel scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fdf6f0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #fbcfe8;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f472b6;
+}
+
+/* Animation utilities */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(1.5deg);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(244, 114, 182, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(244, 114, 182, 0.65);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+/* Sparkle background patterns */
+.sparkle-bg {
+  background-image: radial-gradient(rgba(244, 114, 182, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.grid-cute-pattern {
+  background-size: 24px 24px;
+  background-image: linear-gradient(to right, rgba(244, 114, 182, 0.08) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(244, 114, 182, 0.08) 1px, transparent 1px);
+}

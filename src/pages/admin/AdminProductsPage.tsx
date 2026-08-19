@@ -19,13 +19,12 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { api } from '../../lib/api';
 import { Product } from '../../types';
-import { formatIDR } from '../../lib/utils';
+import { formatIDR, compressImageFile } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
 
 export const AdminProductsPage: React.FC = () => {
-  const { products, categories, refreshData } = useStore();
+  const { products, categories, saveProductLocal, deleteProductLocal, refreshData } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   
@@ -110,56 +109,36 @@ export const AdminProductsPage: React.FC = () => {
     setModalOpen(true);
   };
 
-  // Convert File to base64 data URL for rock-solid zero-break preview
-  const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        resolve(e.target?.result as string);
-      };
-      reader.onerror = () => {
-        resolve(FALLBACK_PRODUCT_IMAGE);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Upload file from device (phone/PC/camera)
+  // Upload and compress files from mobile gallery / PC camera
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setUploadingImage(true);
+    setErrorMsg('');
+
     try {
-      // 1. Read locally for immediate preview
-      const localDataUrls: string[] = [];
+      const compressedUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const url = await fileToDataUrl(files[i]);
-        localDataUrls.push(url);
-      }
-
-      // 2. Also attempt server upload
-      let finalUrls = localDataUrls;
-      try {
-        const res = await api.uploadImages(files);
-        if (res.urls && res.urls.length > 0) {
-          finalUrls = res.urls;
-        } else if (res.url) {
-          finalUrls = [res.url];
+        const file = files[i];
+        try {
+          const compressed = await compressImageFile(file, 800, 0.78);
+          compressedUrls.push(compressed);
+        } catch (imgErr: any) {
+          console.warn('Image compress warning:', imgErr);
+          setErrorMsg(imgErr.message || `Gagal memproses file "${file.name}". Gunakan foto format JPG/PNG.`);
         }
-      } catch {
-        // Fallback to local Data URLs seamlessly
-        finalUrls = localDataUrls;
       }
 
-      // Replace placeholder if it's the only one
-      setImages((prev) => {
-        const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
-        return [...filtered, ...finalUrls];
-      });
-      showToast(`${files.length} foto berhasil diunggah!`);
+      if (compressedUrls.length > 0) {
+        setImages((prev) => {
+          const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
+          return [...filtered, ...compressedUrls];
+        });
+        showToast(`${compressedUrls.length} foto berhasil diunggah & dikompres!`);
+      }
     } catch (err: any) {
-      alert(err.message || 'Gagal mengunggah foto');
+      setErrorMsg(err.message || 'Gagal memproses foto dari perangkat.');
     } finally {
       setUploadingImage(false);
       if (e.target) e.target.value = '';
@@ -230,7 +209,7 @@ export const AdminProductsPage: React.FC = () => {
     });
   };
 
-  // Save product (Add or Edit)
+  // Save product (Add or Edit) with LocalStorage persistence
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -238,7 +217,7 @@ export const AdminProductsPage: React.FC = () => {
       return;
     }
     if (!price || isNaN(Number(price)) || Number(price) < 0) {
-      setErrorMsg('Harga jual harus berupa angka valid.');
+      setErrorMsg('Harga jual harus berupa angka valid (contoh: 35000).');
       return;
     }
     if (!categoryId) {
@@ -268,34 +247,39 @@ export const AdminProductsPage: React.FC = () => {
     };
 
     try {
+      // Save directly to LocalStorage using key 'products'
+      await saveProductLocal(payload, editingProduct?.id);
+
       if (editingProduct) {
-        await api.updateProduct(editingProduct.id, payload);
         showToast(`Produk "${payload.name}" berhasil diperbarui ♡`);
       } else {
-        await api.createProduct(payload);
-        showToast(`Produk baru "${payload.name}" berhasil ditambahkan ♡`);
+        showToast(`Produk baru "${payload.name}" berhasil ditambahkan ke katalog ♡`);
       }
-      await refreshData();
+
+      // Automatically close modal and reset error
       setModalOpen(false);
+      setErrorMsg('');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal menyimpan data produk.');
+      console.error('Error saving product:', err);
+      setErrorMsg(
+        err.message || 'Ukuran gambar terlalu besar atau memori browser penuh. Silakan kurangi foto atau gunakan link gambar online.'
+      );
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Confirm delete product
+  // Confirm delete product locally
   const handleDeleteProduct = async () => {
     if (!deleteConfirmProduct) return;
     setIsDeleting(true);
 
     try {
-      await api.deleteProduct(deleteConfirmProduct.id);
-      showToast(`Produk "${deleteConfirmProduct.name}" berhasil dihapus.`);
-      await refreshData();
+      await deleteProductLocal(deleteConfirmProduct.id);
+      showToast(`Produk "${deleteConfirmProduct.name}" berhasil dihapus dari katalog.`);
       setDeleteConfirmProduct(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus produk.');
+      alert(err.message || 'Gagal menghapus produk dari penyimpanan lokal.');
     } finally {
       setIsDeleting(false);
     }

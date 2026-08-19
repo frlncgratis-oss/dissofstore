@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { Sparkles, Heart, Wand2, Upload, MessageCircle, Check, Image as ImageIcon, ArrowRight } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Sparkles, Heart, Wand2, Upload, MessageCircle, Check, Image as ImageIcon, ArrowRight, X } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { api } from '../lib/api';
-import { createWhatsAppLink } from '../lib/utils';
+import { createWhatsAppLink, compressImageFile } from '../lib/utils';
 import { BeadVisualizer } from '../components/visualizer/BeadVisualizer';
 import confetti from 'canvas-confetti';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../components/common/ImageWithFallback';
+import { CustomRequest } from '../types';
 
 const ACCESSORY_TYPES = [
   'Charm Bracelet',
@@ -53,6 +53,7 @@ export const CustomOrderPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleCharm = (charmName: string) => {
     if (selectedCharms.includes(charmName)) {
@@ -66,30 +67,32 @@ export const CustomOrderPage: React.FC = () => {
     }
   };
 
+  // Asynchronous and compressed photo upload (mobile gallery / camera / PC)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setUploadingImage(true);
+    setErrorMsg('');
+
     try {
       const file = files[0];
-      const reader = new FileReader();
-      reader.onload = (uploadEv) => {
-        if (uploadEv.target?.result) {
-          setRefImageUrl(uploadEv.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
-
-      const res = await api.uploadImages(files);
-      if (res.url) {
-        setRefImageUrl(res.url);
-      }
+      // Compress to optimal dimensions and quality for quick base64 storage
+      const compressedDataUrl = await compressImageFile(file, 800, 0.78);
+      setRefImageUrl(compressedDataUrl);
     } catch (err: any) {
-      // FileReader preview still works
-      console.warn('Image upload server error, using local data URL:', err);
+      console.warn('Image processing warning:', err);
+      setErrorMsg(err.message || 'Gagal memproses foto referensi. Silakan gunakan format JPG atau PNG.');
     } finally {
       setUploadingImage(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleRemoveRefImage = () => {
+    setRefImageUrl('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -99,8 +102,8 @@ export const CustomOrderPage: React.FC = () => {
       setErrorMsg('Mohon isi nama kamu.');
       return;
     }
-    if (!customerPhone.trim() || customerPhone.length < 8) {
-      setErrorMsg('Mohon isi nomor WhatsApp kamu.');
+    if (!customerPhone.trim() || customerPhone.trim().length < 8) {
+      setErrorMsg('Mohon isi nomor WhatsApp kamu yang aktif (minimal 8 digit).');
       return;
     }
 
@@ -108,8 +111,8 @@ export const CustomOrderPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Save custom request to database
-      await api.createCustomRequest({
+      const newCustomRequest: CustomRequest = {
+        id: `custom-${Date.now()}`,
         customer_name: customerName.trim(),
         customer_whatsapp: customerPhone.trim(),
         accessory_type: accessoryType,
@@ -117,10 +120,23 @@ export const CustomOrderPage: React.FC = () => {
         charms_selected: selectedCharms,
         custom_initials: customInitials.trim(),
         special_notes: specialNotes.trim(),
-        reference_image_url: refImageUrl,
-      });
+        reference_image_url: refImageUrl || undefined,
+        status: 'New',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-      // 2. Trigger Confetti
+      // Save directly to LocalStorage with key 'customRequests'
+      try {
+        const savedRaw = localStorage.getItem('customRequests');
+        const existingList = savedRaw ? JSON.parse(savedRaw) : [];
+        const updatedList = [newCustomRequest, ...(Array.isArray(existingList) ? existingList : [])];
+        localStorage.setItem('customRequests', JSON.stringify(updatedList));
+      } catch (storageErr) {
+        console.warn('LocalStorage save warning:', storageErr);
+      }
+
+      // Trigger festive confetti
       confetti({
         particleCount: 100,
         spread: 80,
@@ -128,9 +144,7 @@ export const CustomOrderPage: React.FC = () => {
         colors: ['#F472B6', '#C084FC', '#FDE047', '#A7F3D0', '#7DD3FC'],
       });
 
-      setSubmitted(true);
-
-      // 3. Format WhatsApp message
+      // Construct clean, formatted WhatsApp message
       const waNumber = settings?.whatsapp_number || '6282284901234';
       const charmsList = selectedCharms.length > 0 ? selectedCharms.join(', ') : 'Sesuai rekomendasi admin';
       
@@ -145,19 +159,32 @@ export const CustomOrderPage: React.FC = () => {
         `• Nuansa Warna: *${colorTheme}*\n` +
         `• Inisial / Nama: *${customInitials.trim() || '-'}*\n` +
         `• Charm Pilihan: *${charmsList}*\n` +
-        (specialNotes.trim() ? `• Request Khusus: ${specialNotes.trim()}\n` : '') +
-        (refImageUrl ? `• Foto Referensi: Ada di sistem Dissof\n` : '') +
+        (specialNotes.trim() ? `• Request Khusus / Ukuran: ${specialNotes.trim()}\n` : '') +
+        (refImageUrl ? `• Foto Referensi: Terlampir / Tersimpan di sistem Dissof\n` : '') +
         `━━━━━━━━━━━━━━━━━━━\n\n` +
         `Mohon estimasi harga & waktu pengerjaannya ya kak. Makasih banyak ♡`;
 
       const waUrl = createWhatsAppLink(waNumber, message);
 
-      // Give 1 second for celebratory animation then redirect to WhatsApp
-      setTimeout(() => {
-        window.location.href = waUrl;
-      }, 1200);
+      // Open WhatsApp Admin immediately
+      window.location.href = waUrl;
+
+      // Reset form fields
+      setCustomerName('');
+      setCustomerPhone('');
+      setAccessoryType(ACCESSORY_TYPES[0]);
+      setColorTheme(COLOR_THEMES[0]);
+      setSelectedCharms(['Heart Pearl', 'Bow Ribbon']);
+      setCustomInitials('');
+      setSpecialNotes('');
+      setRefImageUrl('');
+      setSubmitted(true);
+      setTimeout(() => setSubmitted(false), 5000);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal mengirim custom request.');
+      console.error('Custom request submission error:', err);
+      setErrorMsg(err.message || 'Gagal mengirim custom request. Silakan coba kembali.');
+    } finally {
+      // Return button status back to normal
       setIsSubmitting(false);
     }
   };
@@ -186,6 +213,15 @@ export const CustomOrderPage: React.FC = () => {
         charms={selectedCharms}
         initials={customInitials}
       />
+
+      {submitted && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-4 rounded-2xl flex items-center gap-2 shadow-xs animate-in fade-in">
+          <Check className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span className="font-medium">
+            Custom request kamu berhasil disimpan dan diarahkan ke WhatsApp Admin! Form telah dikosongkan.
+          </span>
+        </div>
+      )}
 
       {/* Custom Request Form */}
       <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 sm:p-10 border border-pink-100 shadow-md space-y-8">
@@ -243,7 +279,7 @@ export const CustomOrderPage: React.FC = () => {
                   type="button"
                   key={type}
                   onClick={() => setAccessoryType(type)}
-                  className={`p-3 rounded-2xl text-xs font-bold transition-all text-left flex items-center justify-between border ${
+                  className={`p-3 rounded-2xl text-xs font-bold transition-all text-left flex items-center justify-between border cursor-pointer ${
                     active
                       ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-200'
                       : 'bg-[#FAF7F2] text-[#4A3D36] border-pink-100 hover:border-pink-300'
@@ -272,7 +308,7 @@ export const CustomOrderPage: React.FC = () => {
                   type="button"
                   key={theme}
                   onClick={() => setColorTheme(theme)}
-                  className={`p-3 rounded-2xl text-xs font-bold transition-all text-left flex items-center justify-between border ${
+                  className={`p-3 rounded-2xl text-xs font-bold transition-all text-left flex items-center justify-between border cursor-pointer ${
                     active
                       ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-200'
                       : 'bg-[#FAF7F2] text-[#4A3D36] border-pink-100 hover:border-pink-300'
@@ -306,7 +342,7 @@ export const CustomOrderPage: React.FC = () => {
                   type="button"
                   key={charm.name}
                   onClick={() => toggleCharm(charm.name)}
-                  className={`p-3 rounded-2xl text-xs font-bold transition-all flex flex-col items-center gap-1.5 border text-center ${
+                  className={`p-3 rounded-2xl text-xs font-bold transition-all flex flex-col items-center gap-1.5 border text-center cursor-pointer ${
                     active
                       ? 'bg-pink-100 border-pink-400 text-pink-800 shadow-xs'
                       : 'bg-[#FAF7F2] border-pink-100 text-[#574941] hover:border-pink-300'
@@ -368,8 +404,9 @@ export const CustomOrderPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <label className="w-full sm:w-auto px-5 py-3 rounded-2xl border-2 border-dashed border-pink-300 hover:border-pink-500 bg-[#FAF7F2] text-pink-700 text-xs font-bold cursor-pointer flex items-center justify-center gap-2 transition-colors">
               <Upload className="w-4 h-4" />
-              <span>{uploadingImage ? 'Mengunggah foto...' : 'Unggah Foto Contoh / Pinterest'}</span>
+              <span>{uploadingImage ? 'Mengompres foto...' : 'Unggah Foto Contoh / Pinterest'}</span>
               <input
+                ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleImageUpload}
@@ -383,6 +420,14 @@ export const CustomOrderPage: React.FC = () => {
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Foto referensi siap disertakan!</span>
                 <ImageWithFallback src={refImageUrl} alt="Ref" className="w-8 h-8 rounded-lg object-cover ml-1 border border-emerald-300" />
+                <button
+                  type="button"
+                  onClick={handleRemoveRefImage}
+                  className="text-emerald-700 hover:text-rose-600 p-1 rounded-md transition-colors cursor-pointer"
+                  title="Hapus foto"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
@@ -398,11 +443,11 @@ export const CustomOrderPage: React.FC = () => {
         <div className="pt-4">
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="w-full py-4 px-6 rounded-full bg-gradient-to-r from-pink-500 via-rose-500 to-purple-500 text-white font-extrabold text-sm uppercase tracking-wider shadow-xl shadow-pink-200 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2.5 transition-all disabled:opacity-50"
+            disabled={isSubmitting || uploadingImage}
+            className="w-full py-4 px-6 rounded-full bg-gradient-to-r from-pink-500 via-rose-500 to-purple-500 text-white font-extrabold text-sm uppercase tracking-wider shadow-xl shadow-pink-200 hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2.5 transition-all disabled:opacity-50 cursor-pointer"
           >
             <MessageCircle className="w-5 h-5 fill-white" />
-            <span>{isSubmitting ? 'Mengirim Custom Request...' : 'SUBMIT CUSTOM REQUEST'}</span>
+            <span>{isSubmitting ? 'MENGIRIM CUSTOM REQUEST...' : 'SUBMIT CUSTOM REQUEST'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
           <p className="text-[11px] text-center text-[#7A6A61] mt-2">

@@ -22,22 +22,44 @@ interface AdminDashboardPageProps {
 }
 
 export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNavigateTab }) => {
-  const { settings } = useStore();
+  const { settings, products } = useStore();
   const [stats, setStats] = useState<any>(null);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [recentCustoms, setRecentCustoms] = useState<CustomRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const totalProductsCount = products.length;
+  const lowStockCount = products.filter((p) => (p.stock ?? 0) <= 3).length;
+
   const fetchDashboardData = async () => {
     try {
+      let customsList: CustomRequest[] = [];
+      const savedCustomsRaw = localStorage.getItem('customRequests');
+      if (savedCustomsRaw) {
+        try {
+          const parsed = JSON.parse(savedCustomsRaw);
+          if (Array.isArray(parsed)) {
+            customsList = parsed;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const [s, o, c] = await Promise.all([
         api.getStats().catch(() => null),
         api.getOrders().catch(() => []),
-        api.getCustomRequests().catch(() => []),
+        customsList.length > 0 ? Promise.resolve(customsList) : api.getCustomRequests().catch(() => []),
       ]);
-      setStats(s);
+
+      const finalCustoms = customsList.length > 0 ? customsList : c;
+      setStats({
+        ...s,
+        totalCustomRequests: finalCustoms.length,
+        newCustomRequests: finalCustoms.filter((item: CustomRequest) => item.status === 'New').length,
+      });
       setRecentOrders(o.slice(0, 5));
-      setRecentCustoms(c.slice(0, 5));
+      setRecentCustoms(finalCustoms.slice(0, 5));
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
     } finally {
@@ -147,12 +169,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             </div>
           </div>
           <p className="text-2xl font-bold text-[#2D2D2D] font-playfair">
-            {stats?.totalProducts || 0}
+            {totalProductsCount}
           </p>
-          {stats?.lowStockCount > 0 ? (
+          {lowStockCount > 0 ? (
             <span className="text-[10px] text-rose-600 font-semibold bg-rose-50 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
               <AlertTriangle className="w-3 h-3" />
-              {stats.lowStockCount} stok menipis
+              {lowStockCount} stok menipis
             </span>
           ) : (
             <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-0.5 rounded-full inline-block">

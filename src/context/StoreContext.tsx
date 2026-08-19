@@ -4,6 +4,8 @@ import { api } from '../lib/api';
 import { formatIDR, createWhatsAppLink } from '../lib/utils';
 import confetti from 'canvas-confetti';
 
+const PRODUCTS_STORAGE_KEY = 'products';
+
 interface StoreContextType {
   settings: SiteSettings | null;
   categories: Category[];
@@ -22,6 +24,8 @@ interface StoreContextType {
   toggleWishlist: (productId: string) => void;
   isWishlisted: (productId: string) => boolean;
   refreshData: () => Promise<void>;
+  saveProductLocal: (productData: Partial<Product>, editingId?: string) => Promise<Product>;
+  deleteProductLocal: (productId: string) => Promise<void>;
   cartSubtotal: number;
   cartCount: number;
   checkoutViaWhatsApp: (customer: { name: string; phone: string; address?: string; notes?: string }) => Promise<void>;
@@ -32,7 +36,23 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  
+  // Products initialized from LocalStorage 'products' key if available
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const saved = localStorage.getItem(PRODUCTS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load products from LocalStorage:', e);
+    }
+    return [];
+  });
+
   const [events, setEvents] = useState<EventItem[]>([]);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -87,10 +107,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         api.getTestimonials().catch(() => []),
       ]);
       if (s) setSettings(s);
-      setCategories(c);
-      setProducts(p);
-      setEvents(ev);
-      setTestimonials(t);
+      if (c && c.length > 0) setCategories(c);
+      if (ev && ev.length > 0) setEvents(ev);
+      if (t && t.length > 0) setTestimonials(t);
+
+      // Check if products exist in LocalStorage
+      const localProductsRaw = localStorage.getItem(PRODUCTS_STORAGE_KEY);
+      if (localProductsRaw) {
+        try {
+          const parsed = JSON.parse(localProductsRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setProducts(parsed);
+            return;
+          }
+        } catch {
+          // fallback to fetched
+        }
+      }
+
+      // If LocalStorage was empty, use fetched products and persist to LocalStorage
+      if (p && p.length > 0) {
+        setProducts(p);
+        try {
+          localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(p));
+        } catch (e) {
+          console.warn('Could not cache initial products to LocalStorage:', e);
+        }
+      }
     } catch (err) {
       console.error('Error fetching store data:', err);
     } finally {
@@ -101,6 +144,95 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     refreshData();
   }, [refreshData]);
+
+  // Local-first product saving (handles add and edit without external backend failure)
+  const saveProductLocal = async (productData: Partial<Product>, editingId?: string): Promise<Product> => {
+    let currentProducts = [...products];
+
+    // Find category name
+    const category = categories.find((c) => c.id === productData.category_id);
+    const categoryName = category?.name || 'Accessories';
+
+    let updatedProduct: Product;
+
+    if (editingId) {
+      // Edit existing product
+      const targetIndex = currentProducts.findIndex((p) => p.id === editingId);
+      if (targetIndex === -1) {
+        throw new Error(`Produk dengan ID ${editingId} tidak ditemukan.`);
+      }
+
+      updatedProduct = {
+        ...currentProducts[targetIndex],
+        ...productData,
+        category_name: categoryName,
+        updated_at: new Date().toISOString(),
+      } as Product;
+
+      currentProducts[targetIndex] = updatedProduct;
+    } else {
+      // Create new product
+      const slug = (productData.name || 'product')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+
+      const newId = `prod-${Date.now()}`;
+
+      updatedProduct = {
+        id: newId,
+        name: productData.name || 'Produk Baru',
+        slug: `${slug}-${Math.floor(Math.random() * 1000)}`,
+        category_id: productData.category_id || 'bracelets',
+        category_name: categoryName,
+        price: Number(productData.price) || 0,
+        original_price: productData.original_price ? Number(productData.original_price) : undefined,
+        stock: productData.stock != null ? Number(productData.stock) : 10,
+        description: productData.description || '',
+        details: productData.details || [],
+        variants: productData.variants || [],
+        tags: productData.tags || [],
+        images: productData.images && productData.images.length > 0 ? productData.images : [],
+        is_best_seller: Boolean(productData.is_best_seller),
+        is_sold_out: Boolean(productData.is_sold_out),
+        is_visible: productData.is_visible !== false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      currentProducts = [updatedProduct, ...currentProducts];
+    }
+
+    try {
+      // Persist to LocalStorage under 'products' key
+      localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(currentProducts));
+      setProducts(currentProducts);
+      return updatedProduct;
+    } catch (storageErr: any) {
+      console.error('LocalStorage write error:', storageErr);
+      if (
+        storageErr.name === 'QuotaExceededError' ||
+        storageErr.code === 22 ||
+        storageErr.message?.toLowerCase().includes('quota') ||
+        storageErr.message?.toLowerCase().includes('storage')
+      ) {
+        throw new Error('Ukuran gambar terlalu besar atau memori browser penuh. Silakan kurangi jumlah foto, pilih foto yang lebih kecil, atau gunakan link/URL gambar.');
+      }
+      throw new Error('Gagal menyimpan ke penyimpanan lokal browser. Pastikan browser mengizinkan penyimpanan LocalStorage.');
+    }
+  };
+
+  // Local-first product deletion
+  const deleteProductLocal = async (productId: string): Promise<void> => {
+    const updatedProducts = products.filter((p) => p.id !== productId);
+    try {
+      localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(updatedProducts));
+      setProducts(updatedProducts);
+    } catch (storageErr: any) {
+      console.error('LocalStorage delete error:', storageErr);
+      throw new Error('Gagal menghapus produk dari penyimpanan lokal.');
+    }
+  };
 
   const addToCart = (product: Product, quantity = 1, selectedVariant?: string, customNote?: string) => {
     setCart((prev) => {
@@ -179,12 +311,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       custom_note: item.customNote,
     }));
 
-    // 1. Save order to database
+    // 1. Save order to database if available
     try {
       await api.createOrder({
         customer_name: customer.name,
         customer_whatsapp: customer.phone,
-        customer_address: customer.address || 'Ambil di Car Free Night / Dikirim via Ekspedisi',
+        customer_address: customer.address || 'Ambil di Dumai Pop-Up Market / Dikirim via Ekspedisi',
         items: orderItems,
         subtotal: cartSubtotal,
         total: cartSubtotal,
@@ -238,7 +370,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 5. Clear cart and close drawer
     clearCart();
     setIsCartOpen(false);
-    refreshData();
   };
 
   return (
@@ -261,6 +392,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleWishlist,
         isWishlisted,
         refreshData,
+        saveProductLocal,
+        deleteProductLocal,
         cartSubtotal,
         cartCount,
         checkoutViaWhatsApp,

@@ -15,6 +15,8 @@ import { CustomRequest } from '../../types';
 import { formatDate, createWhatsAppLink } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
 
+const CUSTOM_REQUESTS_KEY = 'customRequests';
+
 export const AdminCustomRequestsPage: React.FC = () => {
   const { settings } = useStore();
   const [requests, setRequests] = useState<CustomRequest[]>([]);
@@ -25,8 +27,26 @@ export const AdminCustomRequestsPage: React.FC = () => {
 
   const fetchRequests = async () => {
     try {
-      const data = await api.getCustomRequests();
-      setRequests(data);
+      // 1. Check LocalStorage first
+      const savedRaw = localStorage.getItem(CUSTOM_REQUESTS_KEY);
+      if (savedRaw) {
+        try {
+          const parsed = JSON.parse(savedRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setRequests(parsed);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 2. Fallback to API if LocalStorage is empty
+      const data = await api.getCustomRequests().catch(() => []);
+      if (data && data.length > 0) {
+        setRequests(data);
+        localStorage.setItem(CUSTOM_REQUESTS_KEY, JSON.stringify(data));
+      }
     } catch (err) {
       console.error('Error loading custom requests:', err);
     } finally {
@@ -39,23 +59,41 @@ export const AdminCustomRequestsPage: React.FC = () => {
   }, []);
 
   const handleUpdateStatus = async (id: string, status: CustomRequest['status']) => {
+    setRequests((prev) => {
+      const updated = prev.map((r) => (r.id === id ? { ...r, status, updated_at: new Date().toISOString() } : r));
+      try {
+        localStorage.setItem(CUSTOM_REQUESTS_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed to update custom requests in LocalStorage:', e);
+      }
+      return updated;
+    });
+
+    // Optional background sync
     try {
       await api.updateCustomRequestStatus(id, status);
-      setRequests((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status, updated_at: new Date().toISOString() } : r))
-      );
-    } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status.');
+    } catch {
+      // ignore
     }
   };
 
   const handleDeleteRequest = async (req: CustomRequest) => {
     if (confirm(`Hapus custom request dari "${req.customer_name}"?`)) {
+      setRequests((prev) => {
+        const updated = prev.filter((r) => r.id !== req.id);
+        try {
+          localStorage.setItem(CUSTOM_REQUESTS_KEY, JSON.stringify(updated));
+        } catch (e) {
+          console.warn('Failed to delete custom request in LocalStorage:', e);
+        }
+        return updated;
+      });
+
+      // Optional background sync
       try {
         await api.deleteCustomRequest(req.id);
-        setRequests((prev) => prev.filter((r) => r.id !== req.id));
-      } catch (err: any) {
-        alert(err.message || 'Gagal menghapus custom request.');
+      } catch {
+        // ignore
       }
     }
   };
@@ -113,7 +151,7 @@ export const AdminCustomRequestsPage: React.FC = () => {
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   active
                     ? 'bg-[#2D2D2D] text-white'
                     : 'bg-[#F9F7F2] text-[#63534B] hover:bg-[#FFEFF1]'
@@ -174,7 +212,7 @@ export const AdminCustomRequestsPage: React.FC = () => {
 
                     <button
                       onClick={() => handleDeleteRequest(req)}
-                      className="text-gray-400 hover:text-rose-600 p-1"
+                      className="text-gray-400 hover:text-rose-600 p-1 cursor-pointer"
                       title="Hapus"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -233,7 +271,7 @@ export const AdminCustomRequestsPage: React.FC = () => {
                   )}
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full py-2.5 px-4 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                  className="w-full py-2.5 px-4 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4 text-[#FF9AA2]" />
                   <span>Chat WhatsApp ({req.customer_whatsapp})</span>
@@ -247,7 +285,7 @@ export const AdminCustomRequestsPage: React.FC = () => {
       {/* Image Zoom Modal */}
       {previewImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setPreviewImage(null)}
         >
           <div className="max-w-xl max-h-[85vh] bg-white rounded-3xl overflow-hidden p-2">

@@ -13,7 +13,7 @@ interface HomePageProps {
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct }) => {
-  const { settings, categories, products, testimonials, events } = useStore();
+  const { settings, categories, products, testimonials, events, storeHeroBanner } = useStore();
 
   const brandName = settings?.brand_name || 'DISSOF.ID';
   const tagline = settings?.tagline || 'everything is heartmade♡';
@@ -21,6 +21,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
   const waNumber = settings?.whatsapp_number || getStoredWhatsAppNumber();
   const offlineSpot = settings?.offline_spot || 'Dumai Pop-Up Store / Bazaars';
   const offlineSchedule = settings?.offline_schedule || 'Setiap Sabtu & Minggu Malam (19.00 - 23.00 WIB)';
+
+  const DEFAULT_HERO_IMAGE = 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=900&auto=format&fit=crop&q=80';
+  const heroImage = (storeHeroBanner && storeHeroBanner.trim()) ? storeHeroBanner : DEFAULT_HERO_IMAGE;
 
   // Best sellers
   const bestSellers = products.filter((p) => p.is_best_seller && p.is_visible !== false).slice(0, 4);
@@ -111,8 +114,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
                 {/* Main Hero Image Card */}
                 <div className="relative rounded-3xl overflow-hidden border-4 border-white shadow-2xl bg-white aspect-[4/5] group">
                   <ImageWithFallback
-                    src="https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=900&auto=format&fit=crop&q=80"
-                    alt="Handmade Charm Bracelet"
+                    src={heroImage}
+                    alt={`${brandName} Handmade Charm Bracelet`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />

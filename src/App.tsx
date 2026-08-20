@@ -15,6 +15,7 @@ import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
 import { AdminCategoriesPage } from './pages/admin/AdminCategoriesPage';
+import { AdminBrandingPage } from './pages/admin/AdminBrandingPage';
 import { AdminProductsPage } from './pages/admin/AdminProductsPage';
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage';
 import { AdminCustomRequestsPage } from './pages/admin/AdminCustomRequestsPage';
@@ -27,7 +28,7 @@ import { Product } from './types';
 
 const MainApp: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  const { isCartOpen, setIsCartOpen, settings } = useStore();
+  const { isCartOpen, setIsCartOpen, settings, storeBackground } = useStore();
 
   // Navigation state
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -36,6 +37,43 @@ const MainApp: React.FC = () => {
 
   // Admin sub-tab
   const [currentAdminTab, setCurrentAdminTab] = useState<string>('dashboard');
+
+  // Dynamic Background styling applied to body & website container
+  React.useEffect(() => {
+    if (!storeBackground || !storeBackground.value) {
+      document.body.style.backgroundColor = '#F9F7F2';
+      document.body.style.backgroundImage = 'none';
+      return;
+    }
+
+    if (storeBackground.type === 'image' || (!storeBackground.value.startsWith('#') && !storeBackground.value.startsWith('rgb') && !storeBackground.value.startsWith('hsl'))) {
+      document.body.style.backgroundImage = `url("${storeBackground.value}")`;
+      document.body.style.backgroundSize = storeBackground.mode === 'repeat' ? 'auto' : 'cover';
+      document.body.style.backgroundRepeat = storeBackground.mode === 'repeat' ? 'repeat' : 'no-repeat';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundAttachment = storeBackground.mode === 'fixed' ? 'fixed' : 'scroll';
+      document.body.style.backgroundColor = '#FAF8F5';
+    } else {
+      document.body.style.backgroundImage = 'none';
+      document.body.style.backgroundColor = storeBackground.value;
+    }
+  }, [storeBackground]);
+
+  const customBgStyle: React.CSSProperties = React.useMemo(() => {
+    if (!storeBackground || !storeBackground.value) {
+      return { backgroundColor: '#F9F7F2' };
+    }
+    if (storeBackground.type === 'image' || (!storeBackground.value.startsWith('#') && !storeBackground.value.startsWith('rgb') && !storeBackground.value.startsWith('hsl'))) {
+      return {
+        backgroundImage: `url("${storeBackground.value}")`,
+        backgroundSize: storeBackground.mode === 'repeat' ? 'auto' : 'cover',
+        backgroundRepeat: storeBackground.mode === 'repeat' ? 'repeat' : 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundAttachment: storeBackground.mode === 'fixed' ? 'fixed' : 'scroll',
+      };
+    }
+    return { backgroundColor: storeBackground.value };
+  }, [storeBackground]);
 
   const handleNavigate = (tab: string, filterCategory?: string) => {
     if (tab === 'shop' && filterCategory) {
@@ -82,6 +120,7 @@ const MainApp: React.FC = () => {
         {currentAdminTab === 'dashboard' && (
           <AdminDashboardPage onNavigateTab={(tab) => setCurrentAdminTab(tab)} />
         )}
+        {currentAdminTab === 'branding' && <AdminBrandingPage />}
         {currentAdminTab === 'categories' && (
           <AdminCategoriesPage onNavigateToProducts={(catId) => setCurrentAdminTab('products')} />
         )}
@@ -99,7 +138,10 @@ const MainApp: React.FC = () => {
 
   // Customer Facing Store
   return (
-    <div className="min-h-screen flex flex-col bg-[#F9F7F2] text-[#2D2D2D] selection:bg-[#FFEFF1] selection:text-[#2D2D2D]">
+    <div 
+      className="min-h-screen flex flex-col text-[#2D2D2D] selection:bg-[#FFEFF1] selection:text-[#2D2D2D] transition-colors duration-300"
+      style={customBgStyle}
+    >
       
       {/* Navbar */}
       <Navbar

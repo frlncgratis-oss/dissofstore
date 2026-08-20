@@ -17,7 +17,8 @@ import {
   KeyRound,
   Bell,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
@@ -62,6 +63,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const menuItems = [
     { id: 'dashboard', label: 'Ringkasan / Stats', icon: LayoutDashboard },
+    { id: 'branding', label: 'Pengaturan Toko / Branding', icon: Palette },
     { id: 'categories', label: 'Kelola Kategori', icon: Layers },
     { id: 'products', label: 'Kelola Produk', icon: ShoppingBag },
     { 

@@ -13,7 +13,8 @@ import {
   MessageCircle,
   ExternalLink,
   CreditCard,
-  Eye
+  Eye,
+  Palette
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { formatIDR, formatDate, createWhatsAppLink } from '../../lib/utils';
@@ -56,6 +57,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigateTab('branding')}
+            className="px-4 py-2.5 rounded-full bg-pink-50 border border-pink-200 hover:bg-pink-100 text-pink-700 text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Palette className="w-3.5 h-3.5 text-pink-500" />
+            <span>Branding & Tampilan</span>
+          </button>
+
           <button
             onClick={() => onNavigateTab('categories')}
             className="px-4 py-2.5 rounded-full bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"

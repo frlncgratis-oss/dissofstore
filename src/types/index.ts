@@ -116,6 +116,12 @@ export interface Testimonial {
   created_at: string;
 }
 
+export interface StoreBackground {
+  type: 'color' | 'image';
+  value: string; // Hex color (e.g. #F9F7F2) or image data/url
+  mode?: 'cover' | 'repeat' | 'fixed';
+}
+
 export interface SiteSettings {
   id?: string;
   brand_name: string;
@@ -130,6 +136,9 @@ export interface SiteSettings {
   announcement_banner?: string;
   about_story: string;
   footer_text: string;
+  logo_url?: string;
+  hero_banner_url?: string;
+  background?: StoreBackground;
   currency_symbol?: string;
   banner_image?: string;
   shopee_url?: string;

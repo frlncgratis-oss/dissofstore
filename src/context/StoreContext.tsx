@@ -1,7 +1,26 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Product, Category, CartItem, SiteSettings, EventItem, Testimonial, PaymentSettings, Order } from '../types';
 import { api } from '../lib/api';
-import { formatIDR, createWhatsAppLink, getStoredWhatsAppNumber, setStoredWhatsAppNumber, playNotificationChime } from '../lib/utils';
+import { 
+  formatIDR, 
+  createWhatsAppLink, 
+  getStoredWhatsAppNumber, 
+  setStoredWhatsAppNumber, 
+  playNotificationChime,
+  getStoredLogo,
+  setStoredLogo,
+  removeStoredLogo,
+  getStoredHeroBanner,
+  setStoredHeroBanner,
+  removeStoredHeroBanner,
+  getStoredBackground,
+  setStoredBackground,
+  resetStoredBackground,
+  StoreBackgroundData,
+  STORE_LOGO_KEY,
+  STORE_HERO_BANNER_KEY,
+  STORE_BACKGROUND_KEY
+} from '../lib/utils';
 import confetti from 'canvas-confetti';
 
 const PRODUCTS_STORAGE_KEY = 'products';
@@ -99,6 +118,15 @@ interface StoreContextType {
   wishlist: string[];
   isCartOpen: boolean;
   isLoading: boolean;
+  storeLogo: string | null;
+  storeHeroBanner: string | null;
+  storeBackground: StoreBackgroundData;
+  saveStoreLogo: (logoData: string) => Promise<void>;
+  removeStoreLogo: () => Promise<void>;
+  saveHeroBanner: (bannerData: string) => Promise<void>;
+  removeHeroBanner: () => Promise<void>;
+  saveStoreBackground: (bg: StoreBackgroundData) => Promise<void>;
+  resetStoreBackground: () => Promise<void>;
   setIsCartOpen: (open: boolean) => void;
   setCartOpen: (open: boolean) => void;
   addToCart: (product: Product, quantity?: number, selectedVariant?: string, customNote?: string) => void;
@@ -234,6 +262,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Store Logo, Hero Banner & Background from LocalStorage keys 'store_logo', 'store_hero_banner', 'store_background'
+  const [storeLogo, setStoreLogo] = useState<string | null>(() => getStoredLogo());
+  const [storeHeroBanner, setStoreHeroBannerState] = useState<string | null>(() => getStoredHeroBanner());
+  const [storeBackground, setStoreBackgroundState] = useState<StoreBackgroundData>(() => getStoredBackground());
+
   // Cart state persisted to localStorage
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
@@ -283,6 +316,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
+    const handleBrandingUpdate = () => {
+      setStoreLogo(getStoredLogo());
+      setStoreHeroBannerState(getStoredHeroBanner());
+      setStoreBackgroundState(getStoredBackground());
+    };
+
     const handleOrdersUpdate = () => {
       try {
         const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
@@ -299,14 +338,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     window.addEventListener('dissof_whatsapp_updated', handleWaUpdate);
     window.addEventListener('dissof_orders_updated', handleOrdersUpdate);
+    window.addEventListener('dissof_branding_updated', handleBrandingUpdate);
     window.addEventListener('storage', (e) => {
       if (e.key === WHATSAPP_STORAGE_KEY) handleWaUpdate();
       if (e.key === ORDERS_STORAGE_KEY) handleOrdersUpdate();
+      if (e.key === STORE_LOGO_KEY || e.key === STORE_HERO_BANNER_KEY || e.key === STORE_BACKGROUND_KEY) handleBrandingUpdate();
     });
 
     return () => {
       window.removeEventListener('dissof_whatsapp_updated', handleWaUpdate);
       window.removeEventListener('dissof_orders_updated', handleOrdersUpdate);
+      window.removeEventListener('dissof_branding_updated', handleBrandingUpdate);
     };
   }, []);
 
@@ -444,6 +486,43 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateWhatsAppNumberLocal = (newNumber: string) => {
     setStoredWhatsAppNumber(newNumber);
     setSettings((prev) => ({ ...prev, whatsapp_number: newNumber }));
+  };
+
+  // 100% Client-Side Store Logo & Hero Banner Handlers
+  const saveStoreLogo = async (logoData: string): Promise<void> => {
+    setStoredLogo(logoData);
+    setStoreLogo(logoData);
+    setSettings((prev) => (prev ? { ...prev, logo_url: logoData } : prev));
+  };
+
+  const removeStoreLogo = async (): Promise<void> => {
+    removeStoredLogo();
+    setStoreLogo(null);
+    setSettings((prev) => (prev ? { ...prev, logo_url: undefined } : prev));
+  };
+
+  const saveHeroBanner = async (bannerData: string): Promise<void> => {
+    setStoredHeroBanner(bannerData);
+    setStoreHeroBannerState(bannerData);
+    setSettings((prev) => (prev ? { ...prev, hero_banner_url: bannerData } : prev));
+  };
+
+  const removeHeroBanner = async (): Promise<void> => {
+    removeStoredHeroBanner();
+    setStoreHeroBannerState(null);
+    setSettings((prev) => (prev ? { ...prev, hero_banner_url: undefined } : prev));
+  };
+
+  const saveStoreBackground = async (bg: StoreBackgroundData): Promise<void> => {
+    setStoredBackground(bg);
+    setStoreBackgroundState(bg);
+    setSettings((prev) => (prev ? { ...prev, background: bg } : prev));
+  };
+
+  const resetStoreBackground = async (): Promise<void> => {
+    resetStoredBackground();
+    setStoreBackgroundState(getStoredBackground());
+    setSettings((prev) => (prev ? { ...prev, background: getStoredBackground() } : prev));
   };
 
   // Save payment settings to LocalStorage 'paymentSettings'
@@ -881,6 +960,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         wishlist,
         isCartOpen,
         isLoading,
+        storeLogo,
+        storeHeroBanner,
+        storeBackground,
+        saveStoreLogo,
+        removeStoreLogo,
+        saveHeroBanner,
+        removeHeroBanner,
+        saveStoreBackground,
+        resetStoreBackground,
         setIsCartOpen,
         setCartOpen: setIsCartOpen,
         addToCart,

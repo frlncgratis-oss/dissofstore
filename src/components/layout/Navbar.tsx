@@ -10,14 +10,20 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onNavigate, onOpenCart }) => {
-  const { settings, cartCount, wishlist } = useStore();
+  const { settings, cartCount, wishlist, storeLogo } = useStore();
   const { isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [announcementClosed, setAnnouncementClosed] = useState(false);
+  const [logoLoadError, setLogoLoadError] = useState(false);
 
   const brandName = settings?.brand_name || 'DISSOF.ID';
   const tagline = settings?.tagline || 'everything is heartmade♡';
   const announcement = settings?.announcement_banner || '✨ FREE GIFT BOX & POUCH UNTUK SETIAP PEMBELIAN ♡ | READY TO SHIP SE-INDONESIA';
+
+  // Reset logo load error if storeLogo changes
+  React.useEffect(() => {
+    setLogoLoadError(false);
+  }, [storeLogo]);
 
   const navLinks = [
     { id: 'home', num: '01', label: 'HOME' },
@@ -70,20 +76,33 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onNavigate, onOpenCa
 
           {/* Editorial Brand Logo */}
           <div
-            className="flex items-center gap-3 cursor-pointer select-none"
+            className="flex items-center gap-3 cursor-pointer select-none py-1 group"
             onClick={() => handleNavClick('home')}
           >
-            <div className="w-10 h-10 rounded-2xl bg-[#2D2D2D] text-white flex items-center justify-center shadow-xs text-base font-bold">
-              ♡
-            </div>
-            <div className="flex flex-col">
-              <span className="font-playfair text-2xl sm:text-3xl font-bold tracking-tight text-[#2D2D2D]">
-                {brandName}
-              </span>
-              <span className="text-[10px] sm:text-[11px] text-[#A08C8C] uppercase tracking-widest font-semibold -mt-1">
-                {tagline}
-              </span>
-            </div>
+            {storeLogo && !logoLoadError ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={storeLogo}
+                  alt={brandName}
+                  onError={() => setLogoLoadError(true)}
+                  className="h-10 sm:h-12 max-w-[160px] sm:max-w-[220px] object-contain rounded-xl group-hover:scale-105 transition-transform shadow-2xs"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="w-10 h-10 rounded-2xl bg-[#2D2D2D] text-white flex items-center justify-center shadow-xs text-base font-bold group-hover:scale-105 transition-transform">
+                  ♡
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-playfair text-2xl sm:text-3xl font-bold tracking-tight text-[#2E241E] group-hover:text-pink-600 transition-colors">
+                    {brandName}
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] text-[#A08C8C] uppercase tracking-widest font-semibold -mt-1">
+                    {tagline}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Desktop Editorial Navigation Links */}

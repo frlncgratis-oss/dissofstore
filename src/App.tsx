@@ -14,6 +14,7 @@ import { WishlistPage } from './pages/WishlistPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
+import { AdminCategoriesPage } from './pages/admin/AdminCategoriesPage';
 import { AdminProductsPage } from './pages/admin/AdminProductsPage';
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage';
 import { AdminCustomRequestsPage } from './pages/admin/AdminCustomRequestsPage';
@@ -80,6 +81,9 @@ const MainApp: React.FC = () => {
       >
         {currentAdminTab === 'dashboard' && (
           <AdminDashboardPage onNavigateTab={(tab) => setCurrentAdminTab(tab)} />
+        )}
+        {currentAdminTab === 'categories' && (
+          <AdminCategoriesPage onNavigateToProducts={(catId) => setCurrentAdminTab('products')} />
         )}
         {currentAdminTab === 'products' && <AdminProductsPage />}
         {currentAdminTab === 'orders' && <AdminOrdersPage />}

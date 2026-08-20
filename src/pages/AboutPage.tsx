@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sparkles, Heart, MapPin, Instagram, ShieldCheck, Smile, Gift, ArrowRight } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { createWhatsAppLink } from '../lib/utils';
+import { createWhatsAppLink, getStoredWhatsAppNumber } from '../lib/utils';
 
 interface AboutPageProps {
   onNavigate: (tab: string) => void;
@@ -13,7 +13,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
   const brandName = settings?.brand_name || 'DISSOF.ID';
   const tagline = settings?.tagline || 'everything is heartmade♡';
   const instagram = settings?.instagram ? settings.instagram.replace('@', '') : 'dissof.id';
-  const waNumber = settings?.whatsapp_number || '6282284901234';
+  const waNumber = settings?.whatsapp_number || getStoredWhatsAppNumber();
   const offlineSpot = settings?.offline_spot || 'Dumai Pop-Up Store / Bazaars';
 
   return (

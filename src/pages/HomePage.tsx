@@ -1,9 +1,11 @@
 import React from 'react';
-import { Sparkles, Heart, ArrowRight, ShoppingBag, Star, MapPin, Instagram, CheckCircle2, Wand2, ShieldCheck, Clock, Layers } from 'lucide-react';
+import { Sparkles, Heart, ArrowRight, ShoppingBag, Star, MapPin, Instagram, CheckCircle2, Wand2, ShieldCheck, Clock, Layers, MessageCircle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/common/ProductCard';
-import { Product } from '../types';
+import { Product, Category } from '../types';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE, FALLBACK_AVATAR_IMAGE, FALLBACK_EVENT_IMAGE } from '../components/common/ImageWithFallback';
+import { createWhatsAppLink, getStoredWhatsAppNumber } from '../lib/utils';
+import { DEFAULT_CATEGORIES } from '../context/StoreContext';
 
 interface HomePageProps {
   onNavigate: (tab: string, filterCategory?: string) => void;
@@ -16,12 +18,20 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
   const brandName = settings?.brand_name || 'DISSOF.ID';
   const tagline = settings?.tagline || 'everything is heartmade♡';
   const instagram = settings?.instagram ? settings.instagram.replace('@', '') : 'dissof.id';
+  const waNumber = settings?.whatsapp_number || getStoredWhatsAppNumber();
   const offlineSpot = settings?.offline_spot || 'Dumai Pop-Up Store / Bazaars';
   const offlineSchedule = settings?.offline_schedule || 'Setiap Sabtu & Minggu Malam (19.00 - 23.00 WIB)';
 
   // Best sellers
   const bestSellers = products.filter((p) => p.is_best_seller && p.is_visible !== false).slice(0, 4);
   const featuredProducts = bestSellers.length > 0 ? bestSellers : products.slice(0, 4);
+
+  const getCategoryImage = (cat: Category) => {
+    if (cat.image && cat.image.trim()) return cat.image;
+    const slug = (cat.slug || cat.name).toLowerCase();
+    const matched = DEFAULT_CATEGORIES.find((d) => d.id === cat.id || d.slug === slug || slug.includes(d.id));
+    return matched?.image || DEFAULT_CATEGORIES[0].image;
+  };
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-16 overflow-hidden">
@@ -155,26 +165,31 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
           </h2>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           {categories.map((cat) => (
             <button
               key={cat.id}
               onClick={() => onNavigate('shop', cat.id)}
               className="group bg-white rounded-3xl p-4 sm:p-5 border border-pink-100 hover:border-pink-300 hover:shadow-lg transition-all duration-300 flex flex-col items-center text-center space-y-3 cursor-pointer"
             >
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-pink-50 border border-pink-100 group-hover:scale-105 transition-transform duration-300 shadow-xs">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-pink-50 border border-pink-100 group-hover:scale-105 transition-transform duration-300 shadow-xs relative">
                 <ImageWithFallback
-                  src={cat.image}
+                  src={getCategoryImage(cat)}
                   alt={cat.name}
                   className="w-full h-full object-cover"
                 />
+                {cat.icon && (
+                  <div className="absolute bottom-1 right-1 w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-white/90 backdrop-blur-xs flex items-center justify-center text-[10px] sm:text-xs shadow-2xs">
+                    {cat.icon}
+                  </div>
+                )}
               </div>
               <div>
-                <h3 className="font-bold text-xs sm:text-sm text-[#2E241E] group-hover:text-pink-600 transition-colors">
+                <h3 className="font-bold text-xs sm:text-sm text-[#2E241E] group-hover:text-pink-600 transition-colors line-clamp-1">
                   {cat.name}
                 </h3>
                 <p className="text-[10px] text-[#8C7D75] line-clamp-1 mt-0.5">
-                  {cat.description}
+                  {cat.description || 'Koleksi handmade DISSOF.ID'}
                 </p>
               </div>
             </button>

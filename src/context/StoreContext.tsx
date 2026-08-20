@@ -1,21 +1,65 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Product, Category, CartItem, SiteSettings, EventItem, Testimonial, PaymentSettings, Order } from '../types';
 import { api } from '../lib/api';
-import { formatIDR, createWhatsAppLink } from '../lib/utils';
+import { formatIDR, createWhatsAppLink, getStoredWhatsAppNumber, setStoredWhatsAppNumber, playNotificationChime } from '../lib/utils';
 import confetti from 'canvas-confetti';
 
 const PRODUCTS_STORAGE_KEY = 'products';
 const CATEGORIES_STORAGE_KEY = 'categories';
 const PAYMENT_SETTINGS_KEY = 'paymentSettings';
 const ORDERS_STORAGE_KEY = 'orders';
+const SETTINGS_STORAGE_KEY = 'site_settings';
+const WHATSAPP_STORAGE_KEY = 'whatsapp_number';
 
-const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'bracelets', name: 'Charm Bracelets', slug: 'bracelets', description: 'Handmade beaded bracelets with cute charms' },
-  { id: 'phone-charms', name: 'Phone Charms', slug: 'phone-charms', description: 'Aksesoris gantungan HP estetik' },
-  { id: 'necklaces', name: 'Beaded Necklaces', slug: 'necklaces', description: 'Kalung manik-manik handmade' },
-  { id: 'rings', name: 'Beaded Rings', slug: 'rings', description: 'Cincin manik-manik pastel' },
-  { id: 'keychains', name: 'Keychains & Bag Charms', slug: 'keychains', description: 'Gantungan kunci & tas lucu' },
-  { id: 'gift-sets', name: 'Gift Sets & Bundles', slug: 'gift-sets', description: 'Paket kado spesial' },
+export const DEFAULT_CATEGORIES: Category[] = [
+  { 
+    id: 'bracelets', 
+    name: 'Charm Bracelets', 
+    slug: 'bracelets', 
+    description: 'Gelang manik-manik handmade dengan charm lucu & liontin custom',
+    icon: '✨',
+    image: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80'
+  },
+  { 
+    id: 'phone-charms', 
+    name: 'Phone Charms', 
+    slug: 'phone-charms', 
+    description: 'Gantungan HP estetik dengan manik pastel & mutiara sintetis',
+    icon: '📱',
+    image: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600&auto=format&fit=crop&q=80'
+  },
+  { 
+    id: 'necklaces', 
+    name: 'Beaded Necklaces', 
+    slug: 'necklaces', 
+    description: 'Kalung manik-manik manis dengan sentuhan daisy & butterfly charm',
+    icon: '🌸',
+    image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80'
+  },
+  { 
+    id: 'rings', 
+    name: 'Beaded Rings', 
+    slug: 'rings', 
+    description: 'Cincin manik-manik pastel elastis yang nyaman dipakai',
+    icon: '💍',
+    image: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=600&auto=format&fit=crop&q=80'
+  },
+  { 
+    id: 'keychains', 
+    name: 'Keychains & Bag Charms', 
+    slug: 'keychains', 
+    description: 'Gantungan kunci & tas lucu perpaduan ribbon dan charm gemas',
+    icon: '🎀',
+    image: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80'
+  },
+  { 
+    id: 'gift-sets', 
+    name: 'Gift Sets & Bundles', 
+    slug: 'gift-sets', 
+    description: 'Paket kado spesial dengan greeting card & premium packaging',
+    icon: '🎁',
+    image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=600&auto=format&fit=crop&q=80'
+  },
 ];
 
 const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
@@ -29,10 +73,25 @@ const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   notes: 'Pesanan kamu akan langsung terverifikasi dan diproses oleh pengrajin DISSOF Dumai ♡'
 };
 
+const DEFAULT_SETTINGS: SiteSettings = {
+  brand_name: 'DISSOF.ID',
+  tagline: 'everything is heartmade♡',
+  sub_tagline: 'handmade accessories & little treasures',
+  instagram: '@dissof.id',
+  whatsapp_number: '6282284901234',
+  location: 'Dumai, Riau',
+  offline_spot: 'Dumai Pop-Up Store / Bazaars',
+  offline_schedule: 'Setiap Sabtu & Minggu Malam (19.00 - 23.00 WIB)',
+  announcement_banner: '✨ FREE GIFT BOX & POUCH UNTUK SETIAP PEMBELIAN ♡ | BISA CUSTOM NAMA & INISIAL',
+  about_story: 'DISSOF.ID adalah UMKM handmade accessories lokal dari Dumai yang merangkai manik-manik indah secara manual dengan cinta.',
+  footer_text: 'everything is heartmade♡ Crafted with love in Dumai, Indonesia.',
+};
+
 interface StoreContextType {
   settings: SiteSettings | null;
   categories: Category[];
   products: Product[];
+  orders: Order[];
   events: EventItem[];
   testimonials: Testimonial[];
   paymentSettings: PaymentSettings;
@@ -40,6 +99,7 @@ interface StoreContextType {
   wishlist: string[];
   isCartOpen: boolean;
   isLoading: boolean;
+  setIsCartOpen: (open: boolean) => void;
   setCartOpen: (open: boolean) => void;
   addToCart: (product: Product, quantity?: number, selectedVariant?: string, customNote?: string) => void;
   removeFromCart: (productId: string, selectedVariant?: string, customNote?: string) => void;
@@ -50,9 +110,13 @@ interface StoreContextType {
   refreshData: () => Promise<void>;
   saveProductLocal: (productData: Partial<Product>, editingId?: string) => Promise<Product>;
   deleteProductLocal: (productId: string) => Promise<void>;
-  saveCategoryLocal: (categoryName: string) => Promise<Category>;
+  saveCategoryLocal: (categoryName: string, categoryData?: Partial<Category>) => Promise<Category>;
+  saveFullCategoryLocal: (category: Category) => Promise<Category>;
   deleteCategoryLocal: (categoryId: string) => Promise<void>;
+  resetCategoriesToDefault: () => void;
   savePaymentSettings: (newSettings: PaymentSettings) => void;
+  saveSettingsLocal: (newSettings: Partial<SiteSettings>) => Promise<SiteSettings>;
+  updateWhatsAppNumberLocal: (newNumber: string) => void;
   createOrderLocal: (orderData: {
     customer_name: string;
     customer_whatsapp: string;
@@ -61,24 +125,57 @@ interface StoreContextType {
     payment_method: 'bank_transfer' | 'qris' | 'whatsapp';
     payment_proof_url?: string;
   }) => Promise<Order>;
+  updateOrderStatusLocal: (orderId: string, status: Order['status']) => Promise<void>;
+  deleteOrderLocal: (orderId: string) => Promise<void>;
   cartSubtotal: number;
   cartCount: number;
+  pendingOrdersCount: number;
   checkoutViaWhatsApp: (customer: { name: string; phone: string; address?: string; notes?: string }) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  // Settings initialized from LocalStorage 'site_settings' & 'whatsapp_number'
+  const [settings, setSettings] = useState<SiteSettings>(() => {
+    try {
+      const storedWA = localStorage.getItem(WHATSAPP_STORAGE_KEY);
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          whatsapp_number: storedWA || parsed.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number,
+        };
+      }
+      if (storedWA) {
+        return { ...DEFAULT_SETTINGS, whatsapp_number: storedWA };
+      }
+    } catch (e) {
+      console.warn('Could not load site settings from LocalStorage:', e);
+    }
+    return DEFAULT_SETTINGS;
+  });
 
-  // Categories initialized from LocalStorage 'categories' key
+  // Categories initialized from LocalStorage 'categories' key with aesthetic fallbacks
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
       const saved = localStorage.getItem(CATEGORIES_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Ensure every category has a valid image fallback
+          return parsed.map((cat: Category) => {
+            const matchedDefault = DEFAULT_CATEGORIES.find(
+              (d) => d.id === cat.id || d.slug === cat.slug || d.name.toLowerCase() === cat.name.toLowerCase()
+            );
+            return {
+              ...cat,
+              image: cat.image || matchedDefault?.image || DEFAULT_CATEGORIES[0].image,
+              icon: cat.icon || matchedDefault?.icon || '✨',
+            };
+          });
         }
       }
     } catch (e) {
@@ -99,6 +196,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } catch (e) {
       console.warn('Could not load products from LocalStorage:', e);
+    }
+    return [];
+  });
+
+  // Orders initialized from LocalStorage 'orders' key
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load orders from LocalStorage:', e);
     }
     return [];
   });
@@ -161,20 +274,77 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [wishlist]);
 
+  // Listen for WhatsApp number updates or orders across the app
+  useEffect(() => {
+    const handleWaUpdate = () => {
+      const stored = localStorage.getItem(WHATSAPP_STORAGE_KEY);
+      if (stored) {
+        setSettings((prev) => ({ ...prev, whatsapp_number: stored }));
+      }
+    };
+
+    const handleOrdersUpdate = () => {
+      try {
+        const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setOrders(parsed);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('dissof_whatsapp_updated', handleWaUpdate);
+    window.addEventListener('dissof_orders_updated', handleOrdersUpdate);
+    window.addEventListener('storage', (e) => {
+      if (e.key === WHATSAPP_STORAGE_KEY) handleWaUpdate();
+      if (e.key === ORDERS_STORAGE_KEY) handleOrdersUpdate();
+    });
+
+    return () => {
+      window.removeEventListener('dissof_whatsapp_updated', handleWaUpdate);
+      window.removeEventListener('dissof_orders_updated', handleOrdersUpdate);
+    };
+  }, []);
+
   const refreshData = useCallback(async () => {
     try {
-      const [s, c, p, ev, t] = await Promise.all([
+      const [s, c, p, ev, t, ords] = await Promise.all([
         api.getSettings().catch(() => null),
         api.getCategories().catch(() => []),
         api.getProducts({ all: true }).catch(() => []),
         api.getEvents().catch(() => []),
         api.getTestimonials().catch(() => []),
+        api.getOrders().catch(() => []),
       ]);
-      if (s) setSettings(s);
+
+      // 1. Settings
+      const storedWA = localStorage.getItem(WHATSAPP_STORAGE_KEY);
+      const storedSettingsRaw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (storedSettingsRaw) {
+        try {
+          const parsed = JSON.parse(storedSettingsRaw);
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            whatsapp_number: storedWA || parsed.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number,
+          });
+        } catch {
+          // ignore
+        }
+      } else if (s) {
+        const merged = { ...s, whatsapp_number: storedWA || s.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number };
+        setSettings(merged);
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+      }
+
       if (ev && ev.length > 0) setEvents(ev);
       if (t && t.length > 0) setTestimonials(t);
 
-      // 1. Sync Categories: check LocalStorage first
+      // 2. Categories: check LocalStorage first
       const localCatRaw = localStorage.getItem(CATEGORIES_STORAGE_KEY);
       if (localCatRaw) {
         try {
@@ -186,33 +356,51 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // ignore
         }
       } else if (c && c.length > 0) {
-        setCategories(c);
-        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(c));
+        const enriched = c.map((cat: Category) => {
+          const def = DEFAULT_CATEGORIES.find((d) => d.id === cat.id || d.slug === cat.slug);
+          return {
+            ...cat,
+            image: cat.image || def?.image || DEFAULT_CATEGORIES[0].image,
+            icon: cat.icon || def?.icon || '✨',
+          };
+        });
+        setCategories(enriched);
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(enriched));
       } else {
+        setCategories(DEFAULT_CATEGORIES);
         localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
       }
 
-      // 2. Sync Products: check LocalStorage first
+      // 3. Products: check LocalStorage first
       const localProductsRaw = localStorage.getItem(PRODUCTS_STORAGE_KEY);
       if (localProductsRaw) {
         try {
           const parsed = JSON.parse(localProductsRaw);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setProducts(parsed);
-            return;
           }
         } catch {
           // fallback
         }
+      } else if (p && p.length > 0) {
+        setProducts(p);
+        localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(p));
       }
 
-      if (p && p.length > 0) {
-        setProducts(p);
+      // 4. Orders: check LocalStorage first
+      const localOrdersRaw = localStorage.getItem(ORDERS_STORAGE_KEY);
+      if (localOrdersRaw) {
         try {
-          localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(p));
-        } catch (e) {
-          console.warn('Could not cache initial products to LocalStorage:', e);
+          const parsed = JSON.parse(localOrdersRaw);
+          if (Array.isArray(parsed)) {
+            setOrders(parsed);
+          }
+        } catch {
+          // ignore
         }
+      } else if (ords && ords.length > 0) {
+        setOrders(ords);
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(ords));
       }
     } catch (err) {
       console.error('Error fetching store data:', err);
@@ -225,6 +413,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     refreshData();
   }, [refreshData]);
 
+  // Save full SiteSettings to LocalStorage
+  const saveSettingsLocal = async (newSettings: Partial<SiteSettings>): Promise<SiteSettings> => {
+    const updated: SiteSettings = {
+      ...settings,
+      ...newSettings,
+    };
+
+    if (newSettings.whatsapp_number) {
+      setStoredWhatsAppNumber(newSettings.whatsapp_number);
+    }
+
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
+      setSettings(updated);
+    } catch (e) {
+      console.error('Failed to save settings to LocalStorage:', e);
+    }
+
+    // Background sync
+    try {
+      await api.updateSettings(updated);
+    } catch {
+      // ignore
+    }
+
+    return updated;
+  };
+
+  const updateWhatsAppNumberLocal = (newNumber: string) => {
+    setStoredWhatsAppNumber(newNumber);
+    setSettings((prev) => ({ ...prev, whatsapp_number: newNumber }));
+  };
+
   // Save payment settings to LocalStorage 'paymentSettings'
   const savePaymentSettings = (newSettings: PaymentSettings) => {
     setPaymentSettingsState(newSettings);
@@ -236,23 +457,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Save category to LocalStorage 'categories'
-  const saveCategoryLocal = async (categoryName: string): Promise<Category> => {
+  const saveCategoryLocal = async (categoryName: string, categoryData?: Partial<Category>): Promise<Category> => {
     const trimmed = categoryName.trim();
     if (!trimmed) {
       throw new Error('Nama kategori tidak boleh kosong.');
     }
 
-    const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const slug = (categoryData?.slug || trimmed).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const existing = categories.find((c) => c.name.toLowerCase() === trimmed.toLowerCase() || c.slug === slug);
     if (existing) {
       return existing;
     }
 
+    // Pick aesthetic image fallback matching category name
+    let fallbackImg = DEFAULT_CATEGORIES[0].image;
+    if (slug.includes('phone') || slug.includes('charm')) fallbackImg = DEFAULT_CATEGORIES[1].image;
+    else if (slug.includes('neck') || slug.includes('kalung')) fallbackImg = DEFAULT_CATEGORIES[2].image;
+    else if (slug.includes('ring') || slug.includes('cincin')) fallbackImg = DEFAULT_CATEGORIES[3].image;
+    else if (slug.includes('key') || slug.includes('bag')) fallbackImg = DEFAULT_CATEGORIES[4].image;
+    else if (slug.includes('gift') || slug.includes('set') || slug.includes('hampers')) fallbackImg = DEFAULT_CATEGORIES[5].image;
+
     const newCat: Category = {
       id: slug || `cat-${Date.now()}`,
       name: trimmed,
       slug: slug || `cat-${Date.now()}`,
-      description: `Koleksi ${trimmed} handmade DISSOF.ID`,
+      description: categoryData?.description || `Koleksi ${trimmed} handmade DISSOF.ID`,
+      icon: categoryData?.icon || '✨',
+      image: categoryData?.image || fallbackImg,
     };
 
     const updatedCategories = [...categories, newCat];
@@ -266,14 +497,46 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Save / Edit full category (with image, description, icon)
+  const saveFullCategoryLocal = async (category: Category): Promise<Category> => {
+    const current = [...categories];
+    const index = current.findIndex((c) => c.id === category.id || c.slug === category.slug);
+
+    let updated: Category[];
+    if (index >= 0) {
+      current[index] = { ...current[index], ...category };
+      updated = current;
+    } else {
+      updated = [...current, category];
+    }
+
+    try {
+      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
+      setCategories(updated);
+      return category;
+    } catch (err) {
+      console.error('Failed to save full category in LocalStorage:', err);
+      throw new Error('Gagal menyimpan perubahan kategori.');
+    }
+  };
+
   const deleteCategoryLocal = async (categoryId: string): Promise<void> => {
-    const updated = categories.filter((c) => c.id !== categoryId);
+    const updated = categories.filter((c) => c.id !== categoryId && c.slug !== categoryId);
     try {
       localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
       setCategories(updated);
     } catch (err) {
       console.error('Failed to delete category:', err);
       throw new Error('Gagal menghapus kategori.');
+    }
+  };
+
+  const resetCategoriesToDefault = () => {
+    try {
+      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
+      setCategories(DEFAULT_CATEGORIES);
+    } catch (err) {
+      console.error('Failed to reset categories:', err);
     }
   };
 
@@ -336,7 +599,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     try {
-      // Persist to LocalStorage under 'products' key
       localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(currentProducts));
       setProducts(currentProducts);
       return updatedProduct;
@@ -366,7 +628,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Save full Order to LocalStorage 'orders'
+  // Save full Order to LocalStorage 'orders' & fire real-time events & play chime
   const createOrderLocal = async (orderData: {
     customer_name: string;
     customer_whatsapp: string;
@@ -412,6 +674,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const existingOrders = savedOrdersRaw ? JSON.parse(savedOrdersRaw) : [];
       const updatedOrders = [newOrder, ...(Array.isArray(existingOrders) ? existingOrders : [])];
       localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
+      setOrders(updatedOrders);
+
+      // Trigger custom notification event & sound
+      window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: newOrder }));
+      window.dispatchEvent(new Event('dissof_orders_updated'));
+      playNotificationChime();
     } catch (err: any) {
       console.error('Failed to save order to LocalStorage:', err);
     }
@@ -432,6 +700,48 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return newOrder;
+  };
+
+  // Update order status 100% Client-Side without error pop-up
+  const updateOrderStatusLocal = async (orderId: string, status: Order['status']): Promise<void> => {
+    setOrders((prev) => {
+      const updated = prev.map((o) => (o.id === orderId ? { ...o, status, updated_at: new Date().toISOString() } : o));
+      try {
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+        window.dispatchEvent(new Event('dissof_orders_updated'));
+      } catch (e) {
+        console.warn('Failed to update orders in LocalStorage:', e);
+      }
+      return updated;
+    });
+
+    // Optional background sync (fails silently without breaking UI)
+    try {
+      await api.updateOrderStatus(orderId, status);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Delete order 100% Client-Side without error pop-up
+  const deleteOrderLocal = async (orderId: string): Promise<void> => {
+    setOrders((prev) => {
+      const updated = prev.filter((o) => o.id !== orderId);
+      try {
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+        window.dispatchEvent(new Event('dissof_orders_updated'));
+      } catch (e) {
+        console.warn('Failed to delete order from LocalStorage:', e);
+      }
+      return updated;
+    });
+
+    // Optional background sync
+    try {
+      await api.deleteOrder(orderId);
+    } catch {
+      // ignore
+    }
   };
 
   const addToCart = (product: Product, quantity = 1, selectedVariant?: string, customNote?: string) => {
@@ -492,6 +802,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const cartCount = cart.reduce((count, item) => count + item.quantity, 0);
 
+  const pendingOrdersCount = orders.filter((o) => o.status === 'Pending').length;
+
   const checkoutViaWhatsApp = async (customer: {
     name: string;
     phone: string;
@@ -530,7 +842,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       itemsText += `   • Jumlah: ${item.quantity} pcs x ${formatIDR(item.product.price)} = *${formatIDR(item.product.price * item.quantity)}*\n\n`;
     });
 
-    const waNumber = settings?.whatsapp_number || '6282284901234';
+    const waNumber = settings?.whatsapp_number || getStoredWhatsAppNumber();
     const message = `Halo ${settings?.brand_name || 'DISSOF.ID'} ♡\nSaya ingin order aksesoris handmade berikut:\n\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `👤 *Data Pemesan:*\n` +
@@ -561,6 +873,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         settings,
         categories,
         products,
+        orders,
         events,
         testimonials,
         paymentSettings,
@@ -568,6 +881,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         wishlist,
         isCartOpen,
         isLoading,
+        setIsCartOpen,
         setCartOpen: setIsCartOpen,
         addToCart,
         removeFromCart,
@@ -579,11 +893,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         saveProductLocal,
         deleteProductLocal,
         saveCategoryLocal,
+        saveFullCategoryLocal,
         deleteCategoryLocal,
+        resetCategoriesToDefault,
         savePaymentSettings,
+        saveSettingsLocal,
+        updateWhatsAppNumberLocal,
         createOrderLocal,
+        updateOrderStatusLocal,
+        deleteOrderLocal,
         cartSubtotal,
         cartCount,
+        pendingOrdersCount,
         checkoutViaWhatsApp,
       }}
     >

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Heart, ShoppingBag, MessageCircle, ArrowLeft, Check, ShieldCheck, Truck, RotateCcw, Share2 } from 'lucide-react';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
-import { formatIDR, createWhatsAppLink } from '../lib/utils';
+import { formatIDR, createWhatsAppLink, getStoredWhatsAppNumber } from '../lib/utils';
 import { ProductCard } from '../components/common/ProductCard';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../components/common/ImageWithFallback';
 
@@ -41,7 +41,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
   const handleBuyNow = () => {
     if (isSoldOut) return;
-    const waNumber = settings?.whatsapp_number || '6282284901234';
+    const waNumber = settings?.whatsapp_number || getStoredWhatsAppNumber();
     const message = `Halo ${settings?.brand_name || 'DISSOF.ID'} ♡\nSaya ingin langsung pesan produk ini:\n\n` +
       `• *Produk:* ${product.name}\n` +
       (selectedVariant ? `• *Varian:* ${selectedVariant}\n` : '') +

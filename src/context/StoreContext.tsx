@@ -81,6 +81,134 @@ export const DEFAULT_CATEGORIES: Category[] = [
   },
 ];
 
+const getDefaultSampleOrders = (): Order[] => {
+  const now = new Date();
+  const today1 = new Date(now.getTime() - 1000 * 60 * 35); // 35 minutes ago
+  const today2 = new Date(now.getTime() - 1000 * 60 * 150); // 2.5 hours ago
+  const yesterday1 = new Date(now.getTime() - 1000 * 60 * 60 * 25);
+  const yesterday2 = new Date(now.getTime() - 1000 * 60 * 60 * 29);
+  const day3 = new Date(now.getTime() - 1000 * 60 * 60 * 68);
+  const day5 = new Date(now.getTime() - 1000 * 60 * 60 * 120);
+  const day9 = new Date(now.getTime() - 1000 * 60 * 60 * 216);
+
+  return [
+    {
+      id: 'ORD-89211',
+      customer_name: 'Nabila Putri Zahra',
+      customer_whatsapp: '081234567890',
+      customer_address: 'Jl. Jend. Sudirman No. 45, Dumai Kota',
+      items: [
+        { product_id: '1', product_name: 'Strawberry Dream Charm Bracelet', price: 35000, quantity: 2, variant: 'Pastel Pink' },
+        { product_id: '2', product_name: 'Custom Initial Daisy Beads Ring', price: 15000, quantity: 1, variant: 'Letter N' }
+      ],
+      subtotal: 85000,
+      total: 85000,
+      payment_method: 'bank_transfer',
+      status: 'Processing',
+      source: 'online',
+      created_at: today1.toISOString(),
+      updated_at: today1.toISOString()
+    },
+    {
+      id: 'ORD-89210',
+      customer_name: 'Aulia Rahmawati',
+      customer_whatsapp: '085278912345',
+      customer_address: 'Dumai Timur (Ambil di Booth Pop-Up)',
+      items: [
+        { product_id: '3', product_name: 'Ocean Breeze Pearl Phone Strap', price: 45000, quantity: 1 }
+      ],
+      subtotal: 45000,
+      total: 45000,
+      payment_method: 'qris',
+      status: 'Completed',
+      source: 'online',
+      created_at: today2.toISOString(),
+      updated_at: today2.toISOString()
+    },
+    {
+      id: 'ORD-89209',
+      customer_name: 'Clarissa Maharani',
+      customer_whatsapp: '082198765432',
+      customer_address: 'Bagan Besar, Dumai',
+      items: [
+        { product_id: '4', product_name: 'Fairy Ribbon Pastel Necklace', price: 55000, quantity: 1 }
+      ],
+      subtotal: 55000,
+      total: 55000,
+      payment_method: 'whatsapp',
+      status: 'Completed',
+      source: 'whatsapp',
+      created_at: yesterday1.toISOString(),
+      updated_at: yesterday1.toISOString()
+    },
+    {
+      id: 'ORD-89208',
+      customer_name: 'Dinda Lestari',
+      customer_whatsapp: '081365432198',
+      customer_address: 'Dumai Kota',
+      items: [
+        { product_id: '1', product_name: 'Strawberry Dream Charm Bracelet', price: 35000, quantity: 1 },
+        { product_id: '5', product_name: 'Cherry Blossom Bag Charm', price: 38000, quantity: 1 }
+      ],
+      subtotal: 73000,
+      total: 73000,
+      payment_method: 'bank_transfer',
+      status: 'Completed',
+      source: 'online',
+      created_at: yesterday2.toISOString(),
+      updated_at: yesterday2.toISOString()
+    },
+    {
+      id: 'ORD-89207',
+      customer_name: 'Siti Nurhaliza',
+      customer_whatsapp: '082233445566',
+      customer_address: 'Bukit Kapur, Dumai',
+      items: [
+        { product_id: '2', product_name: 'Custom Initial Daisy Beads Ring', price: 15000, quantity: 3 }
+      ],
+      subtotal: 45000,
+      total: 45000,
+      payment_method: 'qris',
+      status: 'Completed',
+      source: 'online',
+      created_at: day3.toISOString(),
+      updated_at: day3.toISOString()
+    },
+    {
+      id: 'ORD-89206',
+      customer_name: 'Tiara Amanda Putri',
+      customer_whatsapp: '087711223344',
+      customer_address: 'Dumai Barat',
+      items: [
+        { product_id: '6', product_name: 'Sweet Heart DIY Gift Box Set', price: 95000, quantity: 1 }
+      ],
+      subtotal: 95000,
+      total: 95000,
+      payment_method: 'bank_transfer',
+      status: 'Completed',
+      source: 'online',
+      created_at: day5.toISOString(),
+      updated_at: day5.toISOString()
+    },
+    {
+      id: 'ORD-89205',
+      customer_name: 'Rania Bella Safitri',
+      customer_whatsapp: '085344556677',
+      customer_address: 'Sukajadi, Dumai',
+      items: [
+        { product_id: '3', product_name: 'Ocean Breeze Pearl Phone Strap', price: 45000, quantity: 2 }
+      ],
+      subtotal: 90000,
+      total: 90000,
+      payment_method: 'bank_transfer',
+      status: 'Completed',
+      source: 'online',
+      created_at: day9.toISOString(),
+      updated_at: day9.toISOString()
+    }
+  ];
+};
+
 const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   bank_name: 'BCA (Bank Central Asia)',
   account_number: '8280-9912-3456',
@@ -234,14 +362,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       }
+      // Initialize with sample orders for first-time dashboard preview
+      const initialSamples = getDefaultSampleOrders();
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(initialSamples));
+      return initialSamples;
     } catch (e) {
       console.warn('Could not load orders from LocalStorage:', e);
     }
-    return [];
+    return getDefaultSampleOrders();
   });
 
   // Payment settings initialized from LocalStorage 'paymentSettings' key

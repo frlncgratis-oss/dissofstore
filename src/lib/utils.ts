@@ -111,6 +111,43 @@ export function formatDate(dateString: string): string {
   }
 }
 
+export function formatFullDateTime(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  } catch {
+    return dateString;
+  }
+}
+
+export function isSameDay(d1: Date, d2: Date): boolean {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+export function isSameMonth(date: Date, year: number, month: number): boolean {
+  return date.getFullYear() === year && date.getMonth() === month;
+}
+
+export const INDONESIAN_MONTHS = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+export function getMonthName(monthIndex: number): string {
+  return INDONESIAN_MONTHS[monthIndex] || `Bulan ${monthIndex + 1}`;
+}
+
+
 export const STORE_LOGO_KEY = 'store_logo';
 export const STORE_HERO_BANNER_KEY = 'store_hero_banner';
 export const STORE_BACKGROUND_KEY = 'store_background';

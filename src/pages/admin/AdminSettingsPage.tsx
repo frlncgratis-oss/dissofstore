@@ -90,10 +90,10 @@ export const AdminSettingsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-black/5 pb-4">
         <div>
           <h1 className="font-playfair text-2xl sm:text-3xl font-bold text-[#2D2D2D]">
-            Pengaturan Website & Kontak Toko ♡
+            Pengaturan Website &amp; Kontak Toko ♡
           </h1>
           <p className="text-xs text-[#A08C8C] mt-0.5 font-medium">
-            Atur nomor WhatsApp admin penerima pesanan, akun Instagram, nama brand, dan teks toko. Data tersimpan di LocalStorage.
+            Atur nomor WhatsApp admin penerima pesanan, akun Instagram, nama brand, dan teks toko. Data tersimpan permanen di Cloud Firestore &amp; real-time sync.
           </p>
         </div>
       </div>
@@ -119,10 +119,10 @@ export const AdminSettingsPage: React.FC = () => {
           <div className="flex items-center justify-between border-b border-pink-200 pb-2">
             <h3 className="font-bold text-sm text-[#2D2D2D] flex items-center gap-1.5">
               <MessageCircle className="w-4 h-4 text-emerald-600" />
-              <span>1. Nomor WhatsApp Admin (Tersimpan Dinamis di LocalStorage)</span>
+              <span>1. Nomor WhatsApp Admin (Tersimpan Permanen di Firestore)</span>
             </h3>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-              Key: 'whatsapp_number'
+              Real-Time Sync
             </span>
           </div>
 

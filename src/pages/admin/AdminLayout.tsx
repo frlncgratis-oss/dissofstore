@@ -47,10 +47,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   // Listen to incoming order events & cross-tab storage changes
   useEffect(() => {
+    let timer: any = null;
+
     const handleNewOrder = (e: any) => {
       const order = e.detail as Order;
       if (order) {
+        // Guarantee loud chime plays on in-app order arrival
+        playNotificationChime(true);
         setNewOrderNotification(order);
+
+        // Auto-dismiss after 25 seconds if not clicked
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          setNewOrderNotification(null);
+        }, 25000);
       }
     };
 
@@ -61,6 +71,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
     window.addEventListener('dissof_new_order', handleNewOrder);
     window.addEventListener('dissof_open_orders_tab', handleOpenOrdersTab);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('dissof_new_order', handleNewOrder);
       window.removeEventListener('dissof_open_orders_tab', handleOpenOrdersTab);
     };
@@ -94,51 +105,75 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   return (
     <div className="min-h-screen bg-[#F7F4EF] flex flex-col md:flex-row text-[#3D312A] relative">
       
-      {/* Floating New Order Banner Notification */}
+      {/* Floating In-App New Order Banner Notification (Loud Chime + Real-Time Sync) */}
       {newOrderNotification && (
-        <div className="fixed top-4 right-4 z-50 max-w-md w-[calc(100%-2rem)] bg-gradient-to-r from-[#2D2D2D] to-[#1E1B18] text-white p-4 rounded-3xl shadow-2xl border-2 border-pink-400 animate-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-4 right-4 z-60 max-w-md w-[calc(100%-2rem)] bg-gradient-to-r from-[#24201D] via-[#2D2D2D] to-[#1E1B18] text-white p-4.5 rounded-3xl shadow-2xl border-2 border-pink-400 animate-in slide-in-from-top-4 duration-300 ring-4 ring-pink-400/20">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-pink-500 text-white flex items-center justify-center shrink-0 shadow-md animate-bounce">
-                <Bell className="w-5 h-5" />
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-pink-500/40 animate-bounce">
+                <Bell className="w-5 h-5 text-white" />
               </div>
               <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-pink-400">Pesanan Baru Masuk! ♡</span>
-                  <span className="w-2 h-2 rounded-full bg-pink-400 animate-ping" />
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-pink-300 bg-pink-900/60 border border-pink-500/40 px-2 py-0.5 rounded-full">
+                    Pesanan Baru Masuk! ♡
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 </div>
-                <h4 className="font-bold text-sm text-white">
-                  {newOrderNotification.customer_name} ({formatIDR(newOrderNotification.total)})
+                <h4 className="font-bold text-base text-white tracking-tight">
+                  {newOrderNotification.customer_name}
                 </h4>
+                <div className="flex items-center gap-2 text-xs text-pink-200 font-bold">
+                  <span>{formatIDR(newOrderNotification.total)}</span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-gray-300 text-[11px] font-normal">
+                    {newOrderNotification.items?.length || 1} Item
+                  </span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-white/10 text-white">
+                    {newOrderNotification.payment_method === 'qris' ? 'QRIS' : newOrderNotification.payment_method === 'bank_transfer' ? 'Transfer Bank' : 'WhatsApp'}
+                  </span>
+                </div>
                 <p className="text-[11px] text-gray-300 line-clamp-1">
-                  ID: #{newOrderNotification.id} • {newOrderNotification.items.length} item aksesoris
+                  {newOrderNotification.items?.map(it => `${it.quantity}x ${it.product_name}`).join(', ') || `ID: #${newOrderNotification.id}`}
                 </p>
               </div>
             </div>
 
             <button
               onClick={() => setNewOrderNotification(null)}
-              className="text-gray-400 hover:text-white p-1"
+              className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+              title="Tutup banner"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] text-pink-300">
+          <div className="mt-3.5 pt-2.5 border-t border-white/15 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] text-pink-300 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Real-Time Firestore Sync</span>
+              <span>Real-Time Firestore &amp; Loud Audio Chime</span>
             </div>
-            <button
-              onClick={() => {
-                setNewOrderNotification(null);
-                handleSelectTab('orders');
-              }}
-              className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
-            >
-              <span>Buka Daftar Pesanan</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => playNotificationChime(true)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-pink-300 hover:text-white transition-colors cursor-pointer"
+                title="Bunyikan suara lonceng lagi"
+              >
+                <Bell className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => {
+                  setNewOrderNotification(null);
+                  handleSelectTab('orders');
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-xs font-bold transition-all flex items-center gap-1 shadow-md shadow-pink-500/30 cursor-pointer"
+              >
+                <span>Periksa Pesanan</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

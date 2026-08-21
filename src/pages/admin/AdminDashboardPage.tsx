@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Package, 
   ShoppingBag, 
-  Layers,
+  Layers, 
   Wand2, 
   TrendingUp, 
   AlertTriangle, 
@@ -31,7 +31,11 @@ import {
   Volume2,
   Radio,
   ShieldCheck,
-  X
+  X,
+  Smartphone,
+  Share2,
+  PlusSquare,
+  HelpCircle
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { 
@@ -46,7 +50,11 @@ import {
   playNotificationChime,
   requestBrowserNotificationPermission,
   sendBrowserNotification,
-  isBrowserNotificationSupported
+  isBrowserNotificationSupported,
+  isIOS,
+  isSafari,
+  isStandalonePWA,
+  unlockAudioOnUserInteraction
 } from '../../lib/utils';
 import { Order } from '../../types';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
@@ -59,6 +67,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
   const { settings, products, categories, orders, updateOrderStatusLocal, isOnlineSynced } = useStore();
 
   const [previewProof, setPreviewProof] = useState<string | null>(null);
+  const [showIOSModal, setShowIOSModal] = useState<boolean>(false);
+
+  // Platform detection
+  const isIOSDevice = useMemo(() => isIOS(), []);
+  const isPWAMode = useMemo(() => isStandalonePWA(), []);
 
   // Browser push notification state
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
@@ -94,35 +107,70 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
   }, []);
 
   const handleRequestPermission = async () => {
+    unlockAudioOnUserInteraction();
+    playNotificationChime(true);
+    
     const perm = await requestBrowserNotificationPermission();
     setNotificationPermission(perm);
     if (perm === 'granted') {
-      playNotificationChime();
       sendBrowserNotification('🎉 Notifikasi Pesanan DISSOF Aktif!', {
         body: 'HP / Laptop Admin akan berbunyi dan memunculkan pop-up setiap pembeli menyelesaikan checkout.',
       });
-      setTestNotificationFeedback('Izin notifikasi berhasil diaktifkan ♡');
-      setTimeout(() => setTestNotificationFeedback(''), 3500);
+      setTestNotificationFeedback('Izin notifikasi sistem berhasil diaktifkan ♡');
+      setTimeout(() => setTestNotificationFeedback(''), 4000);
     } else if (perm === 'denied') {
-      setTestNotificationFeedback('Izin diblokir di browser. Mohon izinkan via ikon gembok di address bar.');
-      setTimeout(() => setTestNotificationFeedback(''), 4500);
+      setTestNotificationFeedback(
+        isIOSDevice && !isPWAMode
+          ? 'Di Safari iPhone, tambahkan web ke Layar Utama (Add to Home Screen) terlebih dahulu untuk mengizinkan push notification.'
+          : 'Izin diblokir di browser. Mohon izinkan via pengaturan browser / ikon gembok di address bar.'
+      );
+      setTimeout(() => setTestNotificationFeedback(''), 5500);
     }
   };
 
   const handleTestNotification = () => {
-    playNotificationChime();
+    unlockAudioOnUserInteraction();
+    playNotificationChime(true);
+
+    const demoOrder: Order = {
+      id: `DEMO-${Math.floor(1000 + Math.random() * 9000)}`,
+      customer_name: 'Nabila Putri Zahra (Uji Coba)',
+      customer_whatsapp: '081234567890',
+      customer_address: 'Jl. Jenderal Sudirman No. 12, Dumai',
+      items: [
+        {
+          product_id: 'prod-demo-1',
+          product_name: 'Strawberry Dream Bracelet',
+          price: 45000,
+          quantity: 2,
+          image: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=200&auto=format&fit=crop&q=80',
+        },
+      ],
+      subtotal: 90000,
+      shipping_fee: 0,
+      total: 90000,
+      source: 'online',
+      payment_method: 'bank_transfer',
+      status: 'Pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Trigger in-app banner immediately
+    window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: demoOrder }));
+
     if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
       sendBrowserNotification('🛍️ [Uji Coba] Pesanan Baru Masuk!', {
-        body: 'Contoh: Nabila Putri Zahra • Rp 85.000 (2x Strawberry Dream Bracelet)',
+        body: 'Nabila Putri Zahra • Rp 90.000 (2x Strawberry Dream Bracelet)',
         onClick: () => {
           onNavigateTab('orders');
         }
       });
-      setTestNotificationFeedback('Suara chime berbunyi & notifikasi pop-up terkirim ♡');
+      setTestNotificationFeedback('Suara chime berbunyi & banner pop-up terkirim ♡');
     } else {
-      setTestNotificationFeedback('Suara chime berbunyi! Aktifkan izin pop-up untuk memunculkan notifikasi sistem.');
+      setTestNotificationFeedback('Suara chime berbunyi keras & banner pop-up in-app muncul di layar!');
     }
-    setTimeout(() => setTestNotificationFeedback(''), 3500);
+    setTimeout(() => setTestNotificationFeedback(''), 4500);
   };
 
   // Selected Month & Year filter for Monthly Revenue Analytics
@@ -452,25 +500,31 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
       </div>
 
       {/* Real-time Firestore Sync & Push Notification Card */}
-      <div className="bg-white rounded-3xl p-5 border border-pink-100 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-pink-200/40 to-transparent rounded-bl-full pointer-events-none" />
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-pink-100 shadow-sm relative overflow-hidden space-y-4">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-pink-200/40 via-rose-100/20 to-transparent rounded-bl-full pointer-events-none" />
         
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-pink-200">
-              <Radio className="w-5 h-5 animate-pulse" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-pink-200">
+              <Radio className="w-6 h-6 animate-pulse" />
             </div>
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-[#2D2D2D]">
+                <span className="text-sm font-bold text-[#2D2D2D]">
                   Sinkronisasi Pesanan Real-Time (Cloud Firestore)
                 </span>
                 <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                   <span>Live onSnapshot Aktif</span>
                 </span>
+                {isPWAMode && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-pink-700 bg-pink-50 border border-pink-200 px-2.5 py-0.5 rounded-full">
+                    <Smartphone className="w-3 h-3 text-pink-500" />
+                    <span>Mode PWA / Home Screen Aktif</span>
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-[#7A6A61] leading-relaxed">
+              <p className="text-xs text-[#7A6A61] leading-relaxed max-w-2xl">
                 Pesanan baru yang dibuat oleh pembeli di HP manapun otomatis langsung masuk ke layar Admin secara instan tanpa perlu refresh.
               </p>
             </div>
@@ -487,7 +541,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                 <span>Aktifkan Notifikasi Pop-up</span>
               </button>
             ) : (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+              <div className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 <span>Notifikasi Pop-up Aktif</span>
               </div>
@@ -497,7 +551,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
               type="button"
               onClick={handleTestNotification}
               className="px-3.5 py-2.5 rounded-2xl bg-[#FAF7F2] border border-pink-200 hover:bg-pink-100/70 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
-              title="Uji coba suara lonceng chime dan notifikasi pop-up"
+              title="Uji coba suara lonceng chime keras dan banner pop-up real-time"
             >
               <Volume2 className="w-4 h-4 text-pink-500" />
               <span>Tes Suara &amp; Pop-up</span>
@@ -505,8 +559,77 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           </div>
         </div>
 
+        {/* 1. iOS Safari Special Guidance Card (Shows on iPhone/iPad in Safari browser) */}
+        {isIOSDevice && !isPWAMode && (
+          <div className="bg-gradient-to-r from-amber-50/95 via-orange-50/90 to-pink-50/90 border-2 border-amber-200/90 rounded-2xl p-4 text-[#3D312A] shadow-xs relative">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+                      Petunjuk Notifikasi iPhone (iOS Safari)
+                    </span>
+                    <span className="text-[10px] bg-amber-200/70 text-amber-800 font-extrabold px-2 py-0.5 rounded-full">
+                      iOS Safari Tips
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-[#3D312A] leading-relaxed">
+                    Untuk mengaktifkan notifikasi di iPhone, tekan tombol Share (kotak panah ke atas) lalu pilih &apos;Tambahkan ke Layar Utama&apos;.
+                  </p>
+                  <p className="text-[11px] text-[#6E5A4E]">
+                    Apple iOS Safari mewajibkan web dipasang ke Layar Utama (Home Screen) agar izin notifikasi sistem dapat diaktifkan tanpa diblokir oleh iOS.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowIOSModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>Lihat Panduan Bergambar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Alternative Audio & In-App Alert Guarantee (Always Active for All Devices) */}
+        <div className="bg-[#FAF7F2] border border-pink-200/70 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4 h-4 text-pink-600" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-[#2D2D2D] flex items-center gap-1.5">
+                <span>Alternative Audio &amp; In-App Alert Selalu Aktif</span>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.2 rounded-full">
+                  100% Proteksi
+                </span>
+              </span>
+              <p className="text-[11px] text-[#7A6A61] mt-0.5">
+                Bahkan jika izin notifikasi sistem iPhone tidak diberikan atau dinonaktifkan, dashboard <strong>TETAP membunyikan bel chime 4-nada keras</strong> dan <strong>menampilkan banner pop-up interaktif langsung di layar web</strong> setiap ada pesanan masuk dari Firestore.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleTestNotification}
+            className="text-[11px] font-bold text-pink-600 hover:text-pink-700 hover:underline shrink-0 flex items-center gap-1 self-end sm:self-auto cursor-pointer"
+          >
+            <Sparkles className="w-3 h-3 text-pink-500" />
+            <span>Coba Alert Sekarang</span>
+          </button>
+        </div>
+
         {testNotificationFeedback && (
-          <div className="mt-3 pt-3 border-t border-pink-100/70 flex items-center gap-2 text-xs font-bold text-pink-600 animate-in fade-in duration-200">
+          <div className="pt-2 border-t border-pink-100/70 flex items-center gap-2 text-xs font-bold text-pink-600 animate-in fade-in duration-200">
             <Sparkles className="w-3.5 h-3.5 text-pink-500 shrink-0" />
             <span>{testNotificationFeedback}</span>
           </div>
@@ -1104,6 +1227,101 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           </div>
         )}
       </div>
+
+      {/* iOS Safari Step-by-Step Illustrated Guide Modal */}
+      {showIOSModal && (
+        <div 
+          className="fixed inset-0 z-70 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto cursor-pointer"
+          onClick={() => setShowIOSModal(false)}
+        >
+          <div 
+            className="max-w-md w-full bg-white rounded-3xl overflow-hidden p-6 space-y-5 shadow-2xl border border-pink-100 cursor-default animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-black/5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-[#2D2D2D]">Panduan Notifikasi di iPhone (iOS Safari)</h3>
+                  <p className="text-[11px] text-[#7A6A61]">4 Langkah Cepat untuk Mengaktifkan Notifikasi Push</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIOSModal(false)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-black hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-[#3D312A]">
+              <div className="p-3.5 bg-pink-50/70 border border-pink-100 rounded-2xl flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  1
+                </div>
+                <div>
+                  <strong className="block text-[#2D2D2D] mb-0.5">Tekan Tombol Share di Safari</strong>
+                  <p className="text-[#6E5A4E] text-[11px] leading-relaxed">
+                    Di browser Safari iPhone Anda, ketuk tombol <strong>Share / Bagikan</strong> (ikon kotak dengan panah ke atas <span className="font-mono bg-white px-1 py-0.5 rounded border text-[10px]">⎋</span> di bilah navigasi bawah).
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-amber-50/70 border border-amber-100 rounded-2xl flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-amber-500 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  2
+                </div>
+                <div>
+                  <strong className="block text-[#2D2D2D] mb-0.5">Pilih &apos;Tambahkan ke Layar Utama&apos;</strong>
+                  <p className="text-[#6E5A4E] text-[11px] leading-relaxed">
+                    Gulir ke bawah pada menu pop-up Safari dan pilih <strong>&apos;Tambahkan ke Layar Utama&apos; (Add to Home Screen)</strong>, lalu ketuk tombol <strong>Tambah</strong> di pojok kanan atas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  3
+                </div>
+                <div>
+                  <strong className="block text-[#2D2D2D] mb-0.5">Buka Aplikasi dari Home Screen iPhone</strong>
+                  <p className="text-[#6E5A4E] text-[11px] leading-relaxed">
+                    Tutup Safari dan ketuk ikon aplikasi <strong>DISSOF</strong> yang baru saja terpasang di Home Screen iPhone Anda.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-purple-50/70 border border-purple-100 rounded-2xl flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-purple-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  4
+                </div>
+                <div>
+                  <strong className="block text-[#2D2D2D] mb-0.5">Ketuk &apos;Aktifkan Notifikasi Pop-up&apos;</strong>
+                  <p className="text-[#6E5A4E] text-[11px] leading-relaxed">
+                    Tekan tombol aktifkan notifikasi di dashboard admin. iPhone akan memunculkan izin dan notifikasi push siap berbunyi setiap pesanan masuk!
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-black/5 flex items-center justify-between gap-3">
+              <span className="text-[11px] text-[#8C7D75]">
+                Memerlukan iOS 16.4 atau lebih baru
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowIOSModal(false)}
+                className="px-5 py-2.5 rounded-2xl bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs shadow-sm transition-all cursor-pointer"
+              >
+                Mengerti ♡
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Proof Modal Zoom in Dashboard */}
       {previewProof && (

@@ -59,24 +59,112 @@ export function createWhatsAppLink(phoneNumber?: string, message: string = ''): 
   return `https://wa.me/${numberToUse}?text=${encoded}`;
 }
 
+// ==========================================
+// iOS, Safari, and PWA Detection Helpers
+// ==========================================
+
+export function isIOS(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+export function isSafari(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua);
+}
+
+export function isStandalonePWA(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true ||
+    document.referrer.includes('homescreen')
+  );
+}
+
+// ==========================================
+// Shared Web Audio Chime Engine & iOS Unlocker
+// ==========================================
+
+let globalAudioCtx: AudioContext | null = null;
+let isAudioUnlocked = false;
+
+function getGlobalAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (!globalAudioCtx) {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      globalAudioCtx = new AudioContextClass();
+    }
+  }
+  return globalAudioCtx;
+}
+
 /**
- * Plays a pleasant, charming 3-tone boutique chime via Web Audio API.
- * No external MP3/WAV files required, completely offline, zero-lag, and reliable.
+ * Unlocks Web Audio on iOS Safari upon the first user interaction (touch, click, pointerdown).
+ * This ensures that subsequent real-time Firestore order alerts can play sound automatically.
  */
-export function playNotificationChime(): void {
+export function unlockAudioOnUserInteraction(): void {
+  if (typeof window === 'undefined' || isAudioUnlocked) return;
+
+  const unlockHandler = () => {
+    try {
+      const ctx = getGlobalAudioContext();
+      if (ctx) {
+        if (ctx.state === 'suspended') {
+          ctx.resume().then(() => {
+            isAudioUnlocked = true;
+          }).catch(() => {});
+        } else {
+          isAudioUnlocked = true;
+        }
+
+        // Play silent sound buffer to definitively unlock iOS Audio Hardware
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      }
+    } catch {}
+
+    window.removeEventListener('click', unlockHandler, true);
+    window.removeEventListener('touchstart', unlockHandler, true);
+    window.removeEventListener('pointerdown', unlockHandler, true);
+  };
+
+  window.addEventListener('click', unlockHandler, { capture: true, once: true });
+  window.addEventListener('touchstart', unlockHandler, { capture: true, once: true });
+  window.addEventListener('pointerdown', unlockHandler, { capture: true, once: true });
+}
+
+// Initialize audio unlocker immediately
+if (typeof window !== 'undefined') {
+  unlockAudioOnUserInteraction();
+}
+
+/**
+ * Plays a loud, crisp, and boutique 4-tone cashier/store chime via Web Audio API.
+ * High volume (gain 0.35), dual harmonic oscillators, and pleasant melodic intervals (E6 -> G6 -> B6 -> C7).
+ * Completely offline, zero-lag, no external assets needed, and works even when Safari is muted/backgrounded.
+ */
+export function playNotificationChime(isExtraLoud = true): void {
   try {
     // Vibrate device if supported on mobile
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
-        navigator.vibrate([150, 60, 150]);
+        navigator.vibrate([180, 80, 180]);
       } catch {
         // ignore vibrate restrictions
       }
     }
 
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
+    const ctx = getGlobalAudioContext();
+    if (!ctx) return;
     
     // Resume context if suspended (browser autoplay policy)
     if (ctx.state === 'suspended') {
@@ -84,44 +172,59 @@ export function playNotificationChime(): void {
     }
 
     const now = ctx.currentTime;
-    
-    // Note 1: E6 (~1318.5 Hz)
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(isExtraLoud ? 0.38 : 0.25, now);
+    masterGain.connect(ctx.destination);
+
+    // Chime Note 1: E6 (~1318.51 Hz)
     const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
+    const g1 = ctx.createGain();
+    osc1.type = 'triangle';
     osc1.frequency.setValueAtTime(1318.51, now);
-    gain1.gain.setValueAtTime(0.2, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
+    g1.gain.setValueAtTime(0.3, now);
+    g1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc1.connect(g1);
+    g1.connect(masterGain);
     osc1.start(now);
-    osc1.stop(now + 0.35);
+    osc1.stop(now + 0.4);
 
-    // Note 2: G6 (~1567.98 Hz)
+    // Chime Note 2: G6 (~1567.98 Hz)
     const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
+    const g2 = ctx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1567.98, now + 0.1);
-    gain2.gain.setValueAtTime(0.22, now + 0.1);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.1);
-    osc2.stop(now + 0.45);
+    osc2.frequency.setValueAtTime(1567.98, now + 0.12);
+    g2.gain.setValueAtTime(0.35, now + 0.12);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc2.connect(g2);
+    g2.connect(masterGain);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.55);
 
-    // Note 3: C7 (~2093.00 Hz) - Bright sweet finish
+    // Chime Note 3: B6 (~1975.53 Hz) - Sparkle note
     const osc3 = ctx.createOscillator();
-    const gain3 = ctx.createGain();
+    const g3 = ctx.createGain();
     osc3.type = 'sine';
-    osc3.frequency.setValueAtTime(2093.00, now + 0.22);
-    gain3.gain.setValueAtTime(0.25, now + 0.22);
-    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
-    osc3.connect(gain3);
-    gain3.connect(ctx.destination);
-    osc3.start(now + 0.22);
+    osc3.frequency.setValueAtTime(1975.53, now + 0.24);
+    g3.gain.setValueAtTime(0.38, now + 0.24);
+    g3.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+    osc3.connect(g3);
+    g3.connect(masterGain);
+    osc3.start(now + 0.24);
     osc3.stop(now + 0.7);
+
+    // Chime Note 4: C7 (~2093.00 Hz) - Bright bell resonance
+    const osc4 = ctx.createOscillator();
+    const g4 = ctx.createGain();
+    osc4.type = 'sine';
+    osc4.frequency.setValueAtTime(2093.00, now + 0.36);
+    g4.gain.setValueAtTime(0.42, now + 0.36);
+    g4.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+    osc4.connect(g4);
+    g4.connect(masterGain);
+    osc4.start(now + 0.36);
+    osc4.stop(now + 0.95);
   } catch (e) {
-    console.warn('Audio chime could not play:', e);
+    console.warn('Audio chime error:', e);
   }
 }
 
@@ -133,7 +236,7 @@ export function isBrowserNotificationSupported(): boolean {
 }
 
 /**
- * Requests browser push notification permission for the Admin
+ * Requests browser push notification permission for the Admin (supports iOS PWA & Desktop/Android)
  */
 export async function requestBrowserNotificationPermission(): Promise<NotificationPermission> {
   if (!isBrowserNotificationSupported()) {

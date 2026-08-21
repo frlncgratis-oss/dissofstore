@@ -65,6 +65,7 @@ export interface PaymentSettings {
   bank_name: string;
   account_number: string;
   account_holder: string;
+  whatsapp_number?: string;
   qris_image?: string;
   qris_label?: string;
   instructions?: string;

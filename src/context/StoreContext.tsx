@@ -556,19 +556,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.warn('Firestore categories listener error:', err);
     });
 
-    // C. Listen to Products (Real-time)
+    // C. Listen to Products (Real-time, Unlimited & Permanent)
     const productsColRef = collection(db, 'products');
     const unsubProducts = onSnapshot(productsColRef, (snap) => {
       if (!snap.empty) {
         const loadedProducts: Product[] = [];
         snap.forEach((docSnap) => {
-          loadedProducts.push({ ...docSnap.data(), id: docSnap.id } as Product);
+          const pData = docSnap.data();
+          loadedProducts.push({ ...pData, id: docSnap.id } as Product);
         });
+        // Sort newest first by created_at
+        loadedProducts.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
         setProducts(loadedProducts);
         localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(loadedProducts));
+        idbSaveAll('products', loadedProducts).catch(() => {});
         setIsOnlineSynced(true);
       } else {
-        // Seed initial products
+        // Only seed initial default products if collection is completely empty
         DEFAULT_INITIAL_PRODUCTS.forEach((prod) => {
           setDoc(doc(db, 'products', prod.id), prod, { merge: true }).catch(console.warn);
         });
@@ -793,8 +797,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const savePaymentSettings = async (newSettings: PaymentSettings) => {
     setPaymentSettingsState(newSettings);
     localStorage.setItem(PAYMENT_SETTINGS_KEY, JSON.stringify(newSettings));
+    
+    // Also synchronize WhatsApp number if specified
+    if (newSettings.whatsapp_number) {
+      setStoredWhatsAppNumber(newSettings.whatsapp_number);
+      setSettings((prev) => (prev ? { ...prev, whatsapp_number: newSettings.whatsapp_number } : prev));
+    }
+
     try {
       await setDoc(doc(db, 'payment_settings', 'main_config'), newSettings, { merge: true });
+      if (newSettings.whatsapp_number) {
+        await setDoc(doc(db, 'settings', 'store_config'), { whatsapp_number: newSettings.whatsapp_number }, { merge: true });
+      }
     } catch (e) {
       console.warn('Online sync failed for payment settings:', e);
     }

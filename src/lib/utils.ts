@@ -359,66 +359,65 @@ export function removeStoredHeroBanner(): void {
   }
 }
 
+export {
+  hardCompressImage,
+  getImageSizeInKB,
+  safeLocalStorageSet,
+  isQuotaExceededError,
+  idbSaveItem,
+  idbSaveAll,
+  idbGetAll,
+  idbDeleteItem
+} from './storageFallback';
+
 /**
- * Compresses an image file from mobile gallery or file picker into an optimized base64 string.
- * This prevents localStorage quota overflow and ensures fast loading.
+ * Compresses an image file from mobile gallery or file picker into an ultra-light base64 string (<200KB).
+ * Applies Hard Compression (max 800px width/height, JPEG 0.60 quality) with progressive size reduction
+ * to prevent Firebase/LocalStorage "Quota Exceeded" errors.
  */
-export function compressImageFile(file: File, maxDim = 800, quality = 0.78, preserveAlpha = false): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('File yang dipilih bukan gambar yang valid.'));
-      return;
-    }
-
-    const isPng = file.type === 'image/png';
-    const reader = new FileReader();
-    reader.onload = (readerEvent) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
+export async function compressImageFile(
+  file: File,
+  maxDim = 800,
+  quality = 0.6,
+  preserveAlpha = false
+): Promise<string> {
+  if (preserveAlpha && file.type === 'image/png') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          const limit = Math.min(maxDim, 800);
+          if (width > limit || height > limit) {
+            if (width > height) {
+              height = Math.round((height * limit) / width);
+              width = limit;
+            } else {
+              width = Math.round((width * limit) / height);
+              height = limit;
+            }
           }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(readerEvent.target?.result as string);
-          return;
-        }
-
-        if (isPng && preserveAlpha) {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(e.target?.result as string);
           ctx.clearRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/png');
-          resolve(dataUrl);
-        } else {
-          // Clean background
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, width, height);
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', quality);
-          resolve(dataUrl);
-        }
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => reject(new Error('Gagal memproses gambar PNG.'));
+        img.src = e.target?.result as string;
       };
-      img.onerror = () => {
-        reject(new Error('Gagal memproses file gambar.'));
-      };
-      img.src = readerEvent.target?.result as string;
-    };
-    reader.onerror = () => {
-      reject(new Error('Gagal membaca file gambar dari perangkat.'));
-    };
-    reader.readAsDataURL(file);
-  });
+      reader.onerror = () => reject(new Error('Gagal membaca file PNG.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Use hard compression engine for all regular images
+  const { hardCompressImage: doHardCompress } = await import('./storageFallback');
+  return doHardCompress(file, maxDim, quality, 195);
 }
+

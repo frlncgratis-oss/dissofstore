@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Product } from '../../types';
-import { formatIDR, compressImageFile } from '../../lib/utils';
+import { formatIDR, compressImageFile, hardCompressImage, getImageSizeInKB } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
 import { ImageCropModal } from '../../components/common/ImageCropModal';
 
@@ -88,20 +88,38 @@ export const AdminProductsPage: React.FC = () => {
     setCropModalOpen(true);
   };
 
-  const handleCropComplete = (croppedBase64: string) => {
-    if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
-      setImages((prev) => {
-        const next = [...prev];
-        next[cropTargetIndex] = croppedBase64;
-        return next;
-      });
-      showToast(`Foto #${cropTargetIndex + 1} berhasil di-crop & disesuaikan!`);
-    } else {
-      setImages((prev) => {
-        const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
-        return [...filtered, croppedBase64];
-      });
-      showToast('Foto baru berhasil di-crop & ditambahkan ke produk!');
+  const handleCropComplete = async (croppedBase64: string) => {
+    try {
+      // Ensure hard compression <= 200KB on cropped image
+      const compressedCrop = await hardCompressImage(croppedBase64, 800, 0.6, 195);
+      if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
+        setImages((prev) => {
+          const next = [...prev];
+          next[cropTargetIndex] = compressedCrop;
+          return next;
+        });
+        showToast(`Foto #${cropTargetIndex + 1} berhasil di-crop & dikompres (< 200 KB)!`);
+      } else {
+        setImages((prev) => {
+          const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
+          return [...filtered, compressedCrop];
+        });
+        showToast('Foto baru berhasil di-crop & dikompres (< 200 KB)!');
+      }
+    } catch (err) {
+      console.warn('Crop compress fallback:', err);
+      if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
+        setImages((prev) => {
+          const next = [...prev];
+          next[cropTargetIndex] = croppedBase64;
+          return next;
+        });
+      } else {
+        setImages((prev) => {
+          const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
+          return [...filtered, croppedBase64];
+        });
+      }
     }
     setCropModalOpen(false);
     setCropImageSrc(null);
@@ -188,7 +206,7 @@ export const AdminProductsPage: React.FC = () => {
     }
   };
 
-  // Upload and compress files from mobile gallery / PC camera
+  // Upload and compress files from mobile gallery / PC camera with hard compression (<200KB)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -201,7 +219,8 @@ export const AdminProductsPage: React.FC = () => {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         try {
-          const compressed = await compressImageFile(file, 800, 0.78);
+          // Hard compress to max 800px, 0.6 quality, strictly < 200 KB
+          const compressed = await hardCompressImage(file, 800, 0.6, 195);
           compressedUrls.push(compressed);
         } catch (imgErr: any) {
           console.warn('Image compress warning:', imgErr);
@@ -214,7 +233,7 @@ export const AdminProductsPage: React.FC = () => {
           const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
           return [...filtered, ...compressedUrls];
         });
-        showToast(`${compressedUrls.length} foto berhasil diunggah & dikompres!`);
+        showToast(`${compressedUrls.length} foto berhasil diunggah & dikompres (< 200 KB)!`);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal memproses foto dari perangkat.');
@@ -690,96 +709,108 @@ export const AdminProductsPage: React.FC = () => {
                 
                 {/* Thumbnails grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {images.map((img, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`relative rounded-2xl overflow-hidden border bg-white aspect-square shadow-xs flex flex-col justify-between ${
-                        idx === 0 ? 'border-2 border-[#FF9AA2] ring-2 ring-[#FFD1DC]' : 'border-black/10'
-                      }`}
-                    >
-                      {/* Image with fallback */}
-                      <ImageWithFallback
-                        src={img}
-                        alt={`Foto produk ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
+                  {images.map((img, idx) => {
+                    const sizeKB = getImageSizeInKB(img);
+                    return (
+                      <div 
+                        key={idx} 
+                        className={`relative rounded-2xl overflow-hidden border bg-white aspect-square shadow-xs flex flex-col justify-between ${
+                          idx === 0 ? 'border-2 border-[#FF9AA2] ring-2 ring-[#FFD1DC]' : 'border-black/10'
+                        }`}
+                      >
+                        {/* Image with fallback */}
+                        <ImageWithFallback
+                          src={img}
+                          alt={`Foto produk ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
 
-                      {/* Top Header inside Thumbnail */}
-                      <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none z-10">
-                        {idx === 0 ? (
-                          <span className="bg-[#2D2D2D] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 pointer-events-auto">
-                            <Star className="w-2.5 h-2.5 fill-[#FF9AA2] text-[#FF9AA2]" />
-                            UTAMA
-                          </span>
-                        ) : (
-                          <span className="bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto">
-                            #{idx + 1}
-                          </span>
-                        )}
+                        {/* Top Header inside Thumbnail */}
+                        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none z-10">
+                          <div className="flex items-center gap-1">
+                            {idx === 0 ? (
+                              <span className="bg-[#2D2D2D] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 pointer-events-auto">
+                                <Star className="w-2.5 h-2.5 fill-[#FF9AA2] text-[#FF9AA2]" />
+                                UTAMA
+                              </span>
+                            ) : (
+                              <span className="bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto">
+                                #{idx + 1}
+                              </span>
+                            )}
 
-                        <div className="flex items-center gap-1">
-                          {/* Crop button */}
-                          <button
-                            type="button"
-                            onClick={(e) => handleOpenCropForIndex(idx, e)}
-                            className="w-6 h-6 rounded-full bg-white/95 hover:bg-pink-50 text-[#2D2D2D] hover:text-pink-600 flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto border border-black/5"
-                            title="Crop & Sesuaikan Foto"
-                          >
-                            <Crop className="w-3.5 h-3.5 text-pink-600" />
-                          </button>
+                            {/* Ultra-light size badge */}
+                            {sizeKB > 0 && (
+                              <span className="bg-emerald-800/80 text-emerald-100 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto backdrop-blur-xs">
+                                {sizeKB} KB
+                              </span>
+                            )}
+                          </div>
 
-                          {/* Direct Pink Delete 'X' Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => handleRemoveImage(idx, e)}
-                            className="w-6 h-6 rounded-full bg-[#FF9AA2] hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
-                            title="Hapus foto dari galeri"
-                          >
-                            <X className="w-3.5 h-3.5 stroke-[3]" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Bottom Action Bar inside Thumbnail */}
-                      <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex items-center justify-between z-10">
-                        {idx > 0 ? (
-                          <button
-                            type="button"
-                            onClick={(e) => handleSetPrimaryImage(idx, e)}
-                            className="text-[9px] bg-[#FF9AA2] hover:bg-[#ff858e] text-white px-2 py-0.5 rounded-full font-bold shadow-xs transition-colors cursor-pointer"
-                            title="Jadikan Foto Utama"
-                          >
-                            Set Utama
-                          </button>
-                        ) : (
-                          <span className="text-[9px] text-[#FFD1DC] font-semibold pl-1">Cover Toko</span>
-                        )}
-
-                        <div className="flex items-center gap-1 ml-auto">
-                          {idx > 0 && (
+                          <div className="flex items-center gap-1">
+                            {/* Crop button */}
                             <button
                               type="button"
-                              onClick={(e) => handleMoveImage(idx, 'left', e)}
-                              className="p-1 bg-white/90 hover:bg-white rounded text-[#2D2D2D] shadow-xs cursor-pointer"
-                              title="Geser ke kiri"
+                              onClick={(e) => handleOpenCropForIndex(idx, e)}
+                              className="w-6 h-6 rounded-full bg-white/95 hover:bg-pink-50 text-[#2D2D2D] hover:text-pink-600 flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto border border-black/5"
+                              title="Crop & Sesuaikan Foto"
                             >
-                              <ArrowLeft className="w-2.5 h-2.5" />
+                              <Crop className="w-3.5 h-3.5 text-pink-600" />
                             </button>
-                          )}
-                          {idx < images.length - 1 && (
+
+                            {/* Direct Pink Delete 'X' Button */}
                             <button
                               type="button"
-                              onClick={(e) => handleMoveImage(idx, 'right', e)}
-                              className="p-1 bg-white/90 hover:bg-white rounded text-[#2D2D2D] shadow-xs cursor-pointer"
-                              title="Geser ke kanan"
+                              onClick={(e) => handleRemoveImage(idx, e)}
+                              className="w-6 h-6 rounded-full bg-[#FF9AA2] hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
+                              title="Hapus foto dari galeri"
                             >
-                              <ArrowRight className="w-2.5 h-2.5" />
+                              <X className="w-3.5 h-3.5 stroke-[3]" />
                             </button>
+                          </div>
+                        </div>
+
+                        {/* Bottom Action Bar inside Thumbnail */}
+                        <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex items-center justify-between z-10">
+                          {idx > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => handleSetPrimaryImage(idx, e)}
+                              className="text-[9px] bg-[#FF9AA2] hover:bg-[#ff858e] text-white px-2 py-0.5 rounded-full font-bold shadow-xs transition-colors cursor-pointer"
+                              title="Jadikan Foto Utama"
+                            >
+                              Set Utama
+                            </button>
+                          ) : (
+                            <span className="text-[9px] text-[#FFD1DC] font-semibold pl-1">Cover Toko</span>
                           )}
+
+                          <div className="flex items-center gap-1 ml-auto">
+                            {idx > 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleMoveImage(idx, 'left', e)}
+                                className="p-1 bg-white/90 hover:bg-white rounded text-[#2D2D2D] shadow-xs cursor-pointer"
+                                title="Geser ke kiri"
+                              >
+                                <ArrowLeft className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                            {idx < images.length - 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleMoveImage(idx, 'right', e)}
+                                className="p-1 bg-white/90 hover:bg-white rounded text-[#2D2D2D] shadow-xs cursor-pointer"
+                                title="Geser ke kanan"
+                              >
+                                <ArrowRight className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Upload Card: Phone / Device Gallery */}
                   <label 

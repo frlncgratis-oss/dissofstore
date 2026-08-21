@@ -53,8 +53,8 @@ export async function getCroppedImg(
   options: CropOptions = {}
 ): Promise<string> {
   const {
-    maxDimension = 900,
-    quality = 0.85,
+    maxDimension = 800,
+    quality = 0.6,
     preserveAlpha = false,
     mimeType = 'image/jpeg',
   } = options;

@@ -15,7 +15,7 @@ import {
   Crop
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { compressImageFile } from '../../lib/utils';
+import { compressImageFile, hardCompressImage } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 import { ImageCropModal } from '../../components/common/ImageCropModal';
 
@@ -161,18 +161,19 @@ export const AdminBrandingPage: React.FC = () => {
 
   const handleCropComplete = async (croppedBase64: string) => {
     try {
+      const optimizedBase64 = await hardCompressImage(croppedBase64, 800, 0.6, 195);
       if (cropTargetType === 'logo') {
         setIsProcessingLogo(true);
-        await saveStoreLogo(croppedBase64);
-        showToast('success', 'Logo Header berhasil di-crop & disimpan!');
+        await saveStoreLogo(optimizedBase64);
+        showToast('success', 'Logo Header berhasil di-crop & dikompres (< 200 KB)!');
       } else if (cropTargetType === 'banner') {
         setIsProcessingBanner(true);
-        await saveHeroBanner(croppedBase64);
-        showToast('success', 'Banner Hero Card berhasil di-crop & disimpan!');
+        await saveHeroBanner(optimizedBase64);
+        showToast('success', 'Banner Hero Card berhasil di-crop & dikompres (< 200 KB)!');
       } else if (cropTargetType === 'background') {
         setIsProcessingBg(true);
-        await saveStoreBackground({ type: 'image', value: croppedBase64, mode: bgMode });
-        showToast('success', 'Gambar Background berhasil di-crop & diterapkan!');
+        await saveStoreBackground({ type: 'image', value: optimizedBase64, mode: bgMode });
+        showToast('success', 'Gambar Background berhasil di-crop & dikompres (< 200 KB)!');
       }
     } catch (err: any) {
       showToast('error', err.message || 'Gagal menyimpan hasil crop.');

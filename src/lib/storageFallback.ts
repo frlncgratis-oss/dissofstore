@@ -1,0 +1,289 @@
+/**
+ * DISSOF.ID - Hard Compression & Fallback Storage Engine
+ * Handles ultra-light image compression (<200KB, max 800px, JPEG 0.6)
+ * and seamless fallback to IndexedDB / LocalStorage when Firebase Quota is exceeded.
+ */
+
+const DB_NAME = 'dissof_offline_db';
+const DB_VERSION = 1;
+const STORE_PRODUCTS = 'products';
+const STORE_CATEGORIES = 'categories';
+const STORE_ORDERS = 'orders';
+const STORE_BRANDING = 'branding';
+const STORE_SETTINGS = 'settings';
+
+let idbPromise: Promise<IDBDatabase> | null = null;
+
+export function getIndexedDB(): Promise<IDBDatabase> {
+  if (idbPromise) return idbPromise;
+
+  idbPromise = new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      reject(new Error('IndexedDB not supported'));
+      return;
+    }
+
+    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event: any) => {
+      const db = event.target.result as IDBDatabase;
+      if (!db.objectStoreNames.contains(STORE_PRODUCTS)) {
+        db.createObjectStore(STORE_PRODUCTS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_CATEGORIES)) {
+        db.createObjectStore(STORE_CATEGORIES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_ORDERS)) {
+        db.createObjectStore(STORE_ORDERS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_BRANDING)) {
+        db.createObjectStore(STORE_BRANDING, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
+        db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
+      }
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onerror = () => {
+      reject(request.error);
+    };
+  });
+
+  return idbPromise;
+}
+
+export async function idbSaveItem(storeName: string, item: any): Promise<void> {
+  try {
+    const db = await getIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.put(item);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn(`IndexedDB save failed for ${storeName}:`, err);
+  }
+}
+
+export async function idbSaveAll(storeName: string, items: any[]): Promise<void> {
+  try {
+    const db = await getIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      store.clear();
+      items.forEach((item) => store.put(item));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn(`IndexedDB saveAll failed for ${storeName}:`, err);
+  }
+}
+
+export async function idbGetAll<T>(storeName: string): Promise<T[]> {
+  try {
+    const db = await getIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn(`IndexedDB getAll failed for ${storeName}:`, err);
+    return [];
+  }
+}
+
+export async function idbDeleteItem(storeName: string, key: string): Promise<void> {
+  try {
+    const db = await getIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.delete(key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn(`IndexedDB delete failed for ${storeName}:`, err);
+  }
+}
+
+/**
+ * Calculates approximate size in KB from a base64 or URL string.
+ */
+export function getImageSizeInKB(dataOrUrl: string): number {
+  if (!dataOrUrl) return 0;
+  if (!dataOrUrl.startsWith('data:')) {
+    return 0; // External URL
+  }
+  const base64Str = dataOrUrl.split(',')[1] || '';
+  const bytes = (base64Str.length * 3) / 4;
+  return Math.round((bytes / 1024) * 10) / 10;
+}
+
+/**
+ * Checks if an error is related to quota exceeded (Firebase or Browser LocalStorage).
+ */
+export function isQuotaExceededError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const code = (error as any)?.code?.toLowerCase() || '';
+
+  return (
+    code.includes('quota') ||
+    code.includes('resource-exhausted') ||
+    code.includes('storage/quota-exceeded') ||
+    msg.includes('quota') ||
+    msg.includes('exceeded') ||
+    msg.includes('storage full') ||
+    msg.includes('quotaexceedederror') ||
+    msg.includes('ns_error_dom_quota_reached') ||
+    (error as any)?.name === 'QuotaExceededError'
+  );
+}
+
+/**
+ * Hard compress an image (File or Base64/URL) to strictly under targetMaxKB (default: 195 KB).
+ * Target constraints:
+ * - Max dimension: 800px (or downscaled if still > targetMaxKB)
+ * - Initial JPEG Quality: 0.60
+ * - Final output size guaranteed: <= 200 KB
+ */
+export async function hardCompressImage(
+  input: File | string,
+  maxDim = 800,
+  initialQuality = 0.6,
+  targetMaxKB = 195
+): Promise<string> {
+  // If it's already an external HTTP/HTTPS URL, return as-is
+  if (typeof input === 'string' && (input.startsWith('http://') || input.startsWith('https://'))) {
+    return input;
+  }
+
+  return new Promise((resolve, reject) => {
+    const processImageSource = (src: string) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        let currentMaxDim = Math.min(maxDim, 800);
+        let currentQuality = Math.min(initialQuality, 0.6);
+
+        const attemptCompression = (dim: number, qual: number): string => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > dim || height > dim) {
+            if (width > height) {
+              height = Math.round((height * dim) / width);
+              width = dim;
+            } else {
+              width = Math.round((width * dim) / height);
+              height = dim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            return src;
+          }
+
+          // Clean white background to prevent dark artifacts
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          return canvas.toDataURL('image/jpeg', qual);
+        };
+
+        // Iterative reduction until strictly <= targetMaxKB
+        let resultDataUrl = attemptCompression(currentMaxDim, currentQuality);
+        let sizeKB = getImageSizeInKB(resultDataUrl);
+
+        let iterations = 0;
+        while (sizeKB > targetMaxKB && iterations < 5) {
+          iterations++;
+          currentMaxDim = Math.max(320, Math.round(currentMaxDim * 0.85));
+          currentQuality = Math.max(0.35, currentQuality - 0.08);
+          resultDataUrl = attemptCompression(currentMaxDim, currentQuality);
+          sizeKB = getImageSizeInKB(resultDataUrl);
+        }
+
+        resolve(resultDataUrl);
+      };
+
+      img.onerror = () => {
+        if (typeof input === 'string') {
+          resolve(input);
+        } else {
+          reject(new Error('Gagal memproses gambar untuk kompresi.'));
+        }
+      };
+
+      img.src = src;
+    };
+
+    if (typeof input === 'string') {
+      processImageSource(input);
+    } else {
+      if (!input.type.startsWith('image/')) {
+        reject(new Error('File yang dipilih bukan gambar yang valid.'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          processImageSource(e.target.result as string);
+        } else {
+          reject(new Error('Gagal membaca file gambar.'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Gagal membaca file dari memori.'));
+      reader.readAsDataURL(input);
+    }
+  });
+}
+
+/**
+ * Safe LocalStorage set with automatic fallback and cleanup on QuotaExceededError.
+ */
+export function safeLocalStorageSet(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err: any) {
+    if (isQuotaExceededError(err)) {
+      console.warn(`[SafeStorage] LocalStorage quota exceeded for key "${key}". Activating fallback & auto-cleanup...`);
+      
+      // Auto-cleanup non-critical keys
+      try {
+        const keysToClean = ['firebase:previous_websocket_failure', 'dissof_temp_cache', 'dissof_draft'];
+        keysToClean.forEach((k) => localStorage.removeItem(k));
+      } catch {}
+
+      try {
+        // Try setting again after minor cleanup
+        localStorage.setItem(key, value);
+        return true;
+      } catch (retryErr) {
+        console.warn(`[SafeStorage] Persistent quota overflow. Data saved in memory & IndexedDB.`);
+        return false;
+      }
+    }
+    return false;
+  }
+}

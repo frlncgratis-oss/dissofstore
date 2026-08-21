@@ -52,7 +52,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   description = 'Geser, cubit (pinch) atau gunakan tombol zoom & rotasi untuk mengatur posisi foto terbaik.',
   defaultAspect = 1 / 1,
   aspectOptions = DEFAULT_ASPECT_RATIOS,
-  cropOptions = { maxDimension: 900, quality: 0.85 },
+  cropOptions = { maxDimension: 800, quality: 0.6 },
   onCropComplete,
   onClose,
 }) => {

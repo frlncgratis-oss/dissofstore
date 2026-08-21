@@ -290,7 +290,7 @@ export const AdminBrandingPage: React.FC = () => {
             Pengaturan Toko / Branding ♡
           </h1>
           <p className="text-xs text-[#7A6A61] mt-1 font-medium max-w-2xl">
-            Kelola Logo Header Navbar, Gambar Banner/Hero Card Utama, dan Latar Belakang (Warna & Gambar Pattern) seluruh website. Perubahan langsung disimpan ke LocalStorage browser dan aktif secara real-time.
+            Kelola Logo Header Navbar, Gambar Banner/Hero Card Utama, dan Latar Belakang (Warna & Gambar Pattern) seluruh website. Perubahan langsung tersinkronisasi ke Database Online Firestore dan aktif secara real-time di semua HP & perangkat.
           </p>
         </div>
       </div>

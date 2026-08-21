@@ -1,6 +1,28 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Product, Category, CartItem, SiteSettings, EventItem, Testimonial, PaymentSettings, Order } from '../types';
-import { api } from '../lib/api';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  updateDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  serverTimestamp 
+} from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { 
+  Product, 
+  Category, 
+  CartItem, 
+  SiteSettings, 
+  EventItem, 
+  Testimonial, 
+  PaymentSettings, 
+  Order 
+} from '../types';
 import { 
   formatIDR, 
   createWhatsAppLink, 
@@ -81,10 +103,144 @@ export const DEFAULT_CATEGORIES: Category[] = [
   },
 ];
 
+export const DEFAULT_INITIAL_PRODUCTS: Product[] = [
+  {
+    id: '1',
+    name: 'Strawberry Dream Charm Bracelet',
+    slug: 'strawberry-dream-charm-bracelet',
+    category_id: 'bracelets',
+    category_name: 'Charm Bracelets',
+    price: 35000,
+    original_price: 45000,
+    stock: 12,
+    description: 'Gelang manik-manik pastel kombinasi buah strawberry, mutiara air tawar sintetis, dan charm hati pink manis.',
+    details: ['Bahan: Glass beads, faux pearl, acrylic charm', 'Panjang: 16cm + 4cm rantai extender fleksibel', 'Tahan air & tidak mudah luntur'],
+    variants: ['Pastel Pink', 'Soft Lilac', 'Strawberry Milk'],
+    tags: ['Best Seller', 'Pastel', 'Handmade', 'Viral'],
+    images: ['https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=700&auto=format&fit=crop&q=80'],
+    is_best_seller: true,
+    is_sold_out: false,
+    is_visible: true,
+    rating: 5,
+    review_count: 48,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: '2',
+    name: 'Custom Initial Daisy Beads Ring',
+    slug: 'custom-initial-daisy-beads-ring',
+    category_id: 'rings',
+    category_name: 'Beaded Rings',
+    price: 15000,
+    original_price: 20000,
+    stock: 25,
+    description: 'Cincin manik motif bunga daisy cantik dengan inisial huruf nama kamu sendiri.',
+    details: ['Bahan: Manik Jepang MGB & tali elastis jepang super kuat', 'Bisa request inisial A-Z', 'Ukuran all-size jari wanita'],
+    variants: ['Letter A-Z (Custom)', 'Daisy Putih', 'Daisy Lavender'],
+    tags: ['Custom Name', 'Gift Idea', 'Best Price'],
+    images: ['https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=700&auto=format&fit=crop&q=80'],
+    is_best_seller: true,
+    is_sold_out: false,
+    is_visible: true,
+    rating: 5,
+    review_count: 62,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: '3',
+    name: 'Ocean Breeze Pearl Phone Strap',
+    slug: 'ocean-breeze-pearl-phone-strap',
+    category_id: 'phone-charms',
+    category_name: 'Phone Charms',
+    price: 45000,
+    original_price: 55000,
+    stock: 8,
+    description: 'Gantungan handphone estetik bernuansa laut dengan mutiara, kerang mutiara, dan manik crystal biru pastel.',
+    details: ['Tali strap nilon tebal ekstra kokoh', 'Mencegah HP jatuh saat selfie', 'Panjang total 22cm'],
+    variants: ['Sky Blue', 'Aqua Pearl', 'Deep Sea'],
+    tags: ['Phone Charm', 'Aesthetic', 'Strap HP'],
+    images: ['https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=700&auto=format&fit=crop&q=80'],
+    is_best_seller: true,
+    is_sold_out: false,
+    is_visible: true,
+    rating: 5,
+    review_count: 34,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: '4',
+    name: 'Fairy Ribbon Pastel Necklace',
+    slug: 'fairy-ribbon-pastel-necklace',
+    category_id: 'necklaces',
+    category_name: 'Beaded Necklaces',
+    price: 55000,
+    original_price: 68000,
+    stock: 5,
+    description: 'Kalung manik fairycore dengan charm pita ribbon logam silver dan gradasi manik lilac & soft pink.',
+    details: ['Pengait stainless steel anti karat', 'Panjang 40cm + 5cm extender', 'Kemasan gift bag cantik'],
+    variants: ['Silver Ribbon', 'Rose Gold Ribbon'],
+    tags: ['Fairycore', 'Necklace', 'Trending'],
+    images: ['https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=700&auto=format&fit=crop&q=80'],
+    is_best_seller: false,
+    is_sold_out: false,
+    is_visible: true,
+    rating: 5,
+    review_count: 19,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: '5',
+    name: 'Cherry Blossom Bag Charm',
+    slug: 'cherry-blossom-bag-charm',
+    category_id: 'keychains',
+    category_name: 'Keychains & Bag Charms',
+    price: 38000,
+    stock: 14,
+    description: 'Gantungan tas manik premium dengan gantungan lobster claw gold dan charm bunga sakura.',
+    details: ['Ring gantungan kokoh untuk tas & kunci', 'Charm enamel bunga sakura Jepang'],
+    variants: ['Sakura Pink', 'Matcha Mint'],
+    tags: ['Bag Charm', 'Keychain', 'Cute'],
+    images: ['https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80'],
+    is_best_seller: false,
+    is_sold_out: false,
+    is_visible: true,
+    rating: 5,
+    review_count: 22,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: '6',
+    name: 'Sweet Heart DIY Gift Box Set',
+    slug: 'sweet-heart-diy-gift-box-set',
+    category_id: 'gift-sets',
+    category_name: 'Gift Sets & Bundles',
+    price: 95000,
+    original_price: 120000,
+    stock: 6,
+    description: 'Set kado spesial berisi 1 gelang charm, 1 kalung mutiara, 1 cincin daisy, bonus greeting card & kotak kado pita estetik.',
+    details: ['Free custom kartu ucapan', 'Hardbox pita premium', 'Bisa langsung dikirim ke orang tersayang'],
+    variants: ['Pink Valentine Box', 'Lavender Sky Box', 'Pastel Blossom Box'],
+    tags: ['Gift Box', 'Hampers', 'Birthday Gift'],
+    images: ['https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=700&auto=format&fit=crop&q=80'],
+    is_best_seller: true,
+    is_sold_out: false,
+    is_visible: true,
+    rating: 5,
+    review_count: 57,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+];
+
 const getDefaultSampleOrders = (): Order[] => {
   const now = new Date();
-  const today1 = new Date(now.getTime() - 1000 * 60 * 35); // 35 minutes ago
-  const today2 = new Date(now.getTime() - 1000 * 60 * 150); // 2.5 hours ago
+  const today1 = new Date(now.getTime() - 1000 * 60 * 35);
+  const today2 = new Date(now.getTime() - 1000 * 60 * 150);
   const yesterday1 = new Date(now.getTime() - 1000 * 60 * 60 * 25);
   const yesterday2 = new Date(now.getTime() - 1000 * 60 * 60 * 29);
   const day3 = new Date(now.getTime() - 1000 * 60 * 60 * 68);
@@ -209,7 +365,7 @@ const getDefaultSampleOrders = (): Order[] => {
   ];
 };
 
-const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   bank_name: 'BCA (Bank Central Asia)',
   account_number: '8280-9912-3456',
   account_holder: 'DISSOF ACCESSORIES DUMAI',
@@ -220,7 +376,7 @@ const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   notes: 'Pesanan kamu akan langsung terverifikasi dan diproses oleh pengrajin DISSOF Dumai ♡'
 };
 
-const DEFAULT_SETTINGS: SiteSettings = {
+export const DEFAULT_SETTINGS: SiteSettings = {
   brand_name: 'DISSOF.ID',
   tagline: 'everything is heartmade♡',
   sub_tagline: 'handmade accessories & little treasures',
@@ -246,6 +402,7 @@ interface StoreContextType {
   wishlist: string[];
   isCartOpen: boolean;
   isLoading: boolean;
+  isOnlineSynced: boolean;
   storeLogo: string | null;
   storeHeroBanner: string | null;
   storeBackground: StoreBackgroundData;
@@ -292,7 +449,9 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Settings initialized from LocalStorage 'site_settings' & 'whatsapp_number'
+  const [isOnlineSynced, setIsOnlineSynced] = useState<boolean>(true);
+
+  // Settings State
   const [settings, setSettings] = useState<SiteSettings>(() => {
     try {
       const storedWA = localStorage.getItem(WHATSAPP_STORAGE_KEY);
@@ -308,39 +467,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (storedWA) {
         return { ...DEFAULT_SETTINGS, whatsapp_number: storedWA };
       }
-    } catch (e) {
-      console.warn('Could not load site settings from LocalStorage:', e);
+    } catch {
+      // ignore
     }
     return DEFAULT_SETTINGS;
   });
 
-  // Categories initialized from LocalStorage 'categories' key with aesthetic fallbacks
+  // Categories State
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
       const saved = localStorage.getItem(CATEGORIES_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Ensure every category has a valid image fallback
-          return parsed.map((cat: Category) => {
-            const matchedDefault = DEFAULT_CATEGORIES.find(
-              (d) => d.id === cat.id || d.slug === cat.slug || d.name.toLowerCase() === cat.name.toLowerCase()
-            );
-            return {
-              ...cat,
-              image: cat.image || matchedDefault?.image || DEFAULT_CATEGORIES[0].image,
-              icon: cat.icon || matchedDefault?.icon || '✨',
-            };
-          });
+          return parsed;
         }
       }
-    } catch (e) {
-      console.warn('Could not load categories from LocalStorage:', e);
+    } catch {
+      // ignore
     }
     return DEFAULT_CATEGORIES;
   });
 
-  // Products initialized from LocalStorage 'products' key
+  // Products State
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem(PRODUCTS_STORAGE_KEY);
@@ -350,13 +499,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return parsed;
         }
       }
-    } catch (e) {
-      console.warn('Could not load products from LocalStorage:', e);
+    } catch {
+      // ignore
     }
-    return [];
+    return DEFAULT_INITIAL_PRODUCTS;
   });
 
-  // Orders initialized from LocalStorage 'orders' key
+  // Orders State
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
       const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
@@ -366,17 +515,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return parsed;
         }
       }
-      // Initialize with sample orders for first-time dashboard preview
-      const initialSamples = getDefaultSampleOrders();
-      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(initialSamples));
-      return initialSamples;
-    } catch (e) {
-      console.warn('Could not load orders from LocalStorage:', e);
+    } catch {
+      // ignore
     }
     return getDefaultSampleOrders();
   });
 
-  // Payment settings initialized from LocalStorage 'paymentSettings' key
+  // Payment Settings State
   const [paymentSettings, setPaymentSettingsState] = useState<PaymentSettings>(() => {
     try {
       const saved = localStorage.getItem(PAYMENT_SETTINGS_KEY);
@@ -384,22 +529,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const parsed = JSON.parse(saved);
         return { ...DEFAULT_PAYMENT_SETTINGS, ...parsed };
       }
-    } catch (e) {
-      console.warn('Could not load payment settings from LocalStorage:', e);
+    } catch {
+      // ignore
     }
     return DEFAULT_PAYMENT_SETTINGS;
   });
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Store Logo, Hero Banner & Background from LocalStorage keys 'store_logo', 'store_hero_banner', 'store_background'
+  // Store Logo, Hero Banner & Background
   const [storeLogo, setStoreLogo] = useState<string | null>(() => getStoredLogo());
   const [storeHeroBanner, setStoreHeroBannerState] = useState<string | null>(() => getStoredHeroBanner());
   const [storeBackground, setStoreBackgroundState] = useState<StoreBackgroundData>(() => getStoredBackground());
 
-  // Cart state persisted to localStorage
+  // Cart & Wishlist
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem('dissof_cart');
@@ -409,7 +554,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  // Wishlist state
   const [wishlist, setWishlist] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('dissof_wishlist');
@@ -421,173 +565,186 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  // Save cart
+  // Save Cart and Wishlist to LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem('dissof_cart', JSON.stringify(cart));
-    } catch (e) {
-      console.error('Failed to save cart:', e);
+    } catch {
+      // ignore
     }
   }, [cart]);
 
-  // Save wishlist
   useEffect(() => {
     try {
       localStorage.setItem('dissof_wishlist', JSON.stringify(wishlist));
-    } catch (e) {
-      console.error('Failed to save wishlist:', e);
+    } catch {
+      // ignore
     }
   }, [wishlist]);
 
-  // Listen for WhatsApp number updates or orders across the app
+  // =========================================================================
+  // 1. REAL-TIME FIRESTORE DATABASE LISTENERS (SYNC ACROSS ALL MOBILE & DESKTOP)
+  // =========================================================================
   useEffect(() => {
-    const handleWaUpdate = () => {
-      const stored = localStorage.getItem(WHATSAPP_STORAGE_KEY);
-      if (stored) {
-        setSettings((prev) => ({ ...prev, whatsapp_number: stored }));
+    // A. Listen to Site Settings & Branding (Real-time)
+    const settingsDocRef = doc(db, 'settings', 'store_config');
+    const unsubSettings = onSnapshot(settingsDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as SiteSettings;
+        setSettings((prev) => ({
+          ...prev,
+          ...data,
+        }));
+        if (data.logo_url !== undefined) {
+          setStoreLogo(data.logo_url || null);
+          setStoredLogo(data.logo_url || '');
+        }
+        if (data.hero_banner_url !== undefined) {
+          setStoreHeroBannerState(data.hero_banner_url || null);
+          setStoredHeroBanner(data.hero_banner_url || '');
+        }
+        if (data.background) {
+          setStoreBackgroundState(data.background);
+          setStoredBackground(data.background);
+        }
+        if (data.whatsapp_number) {
+          setStoredWhatsAppNumber(data.whatsapp_number);
+        }
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...data }));
+        setIsOnlineSynced(true);
+      } else {
+        // Seed initial settings into Firestore if empty
+        const initialBg = getStoredBackground();
+        const initialLogo = getStoredLogo();
+        const initialBanner = getStoredHeroBanner();
+        const initialWA = getStoredWhatsAppNumber() || DEFAULT_SETTINGS.whatsapp_number;
+        const seedData: SiteSettings = {
+          ...DEFAULT_SETTINGS,
+          logo_url: initialLogo || undefined,
+          hero_banner_url: initialBanner || undefined,
+          background: initialBg,
+          whatsapp_number: initialWA,
+        };
+        setDoc(settingsDocRef, seedData, { merge: true }).catch(console.warn);
       }
-    };
+    }, (err) => {
+      console.warn('Firestore settings listener error (offline cache active):', err);
+    });
 
+    // B. Listen to Categories (Real-time)
+    const categoriesColRef = collection(db, 'categories');
+    const unsubCategories = onSnapshot(categoriesColRef, (snap) => {
+      if (!snap.empty) {
+        const loadedCats: Category[] = [];
+        snap.forEach((docSnap) => {
+          loadedCats.push({ ...docSnap.data(), id: docSnap.id } as Category);
+        });
+        setCategories(loadedCats);
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(loadedCats));
+        setIsOnlineSynced(true);
+      } else {
+        // Seed initial categories
+        DEFAULT_CATEGORIES.forEach((cat) => {
+          setDoc(doc(db, 'categories', cat.id), cat, { merge: true }).catch(console.warn);
+        });
+      }
+    }, (err) => {
+      console.warn('Firestore categories listener error:', err);
+    });
+
+    // C. Listen to Products (Real-time)
+    const productsColRef = collection(db, 'products');
+    const unsubProducts = onSnapshot(productsColRef, (snap) => {
+      if (!snap.empty) {
+        const loadedProducts: Product[] = [];
+        snap.forEach((docSnap) => {
+          loadedProducts.push({ ...docSnap.data(), id: docSnap.id } as Product);
+        });
+        setProducts(loadedProducts);
+        localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(loadedProducts));
+        setIsOnlineSynced(true);
+      } else {
+        // Seed initial products
+        DEFAULT_INITIAL_PRODUCTS.forEach((prod) => {
+          setDoc(doc(db, 'products', prod.id), prod, { merge: true }).catch(console.warn);
+        });
+      }
+    }, (err) => {
+      console.warn('Firestore products listener error:', err);
+    });
+
+    // D. Listen to Orders (Real-time)
+    const ordersColRef = collection(db, 'orders');
+    const unsubOrders = onSnapshot(ordersColRef, (snap) => {
+      if (!snap.empty) {
+        const loadedOrders: Order[] = [];
+        snap.forEach((docSnap) => {
+          loadedOrders.push({ ...docSnap.data(), id: docSnap.id } as Order);
+        });
+        // Sort newest first
+        loadedOrders.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        setOrders(loadedOrders);
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(loadedOrders));
+        setIsOnlineSynced(true);
+      } else {
+        // Seed initial sample orders
+        const samples = getDefaultSampleOrders();
+        samples.forEach((ord) => {
+          setDoc(doc(db, 'orders', ord.id), ord, { merge: true }).catch(console.warn);
+        });
+      }
+    }, (err) => {
+      console.warn('Firestore orders listener error:', err);
+    });
+
+    // E. Listen to Payment Settings (Real-time)
+    const paymentDocRef = doc(db, 'payment_settings', 'main_config');
+    const unsubPayment = onSnapshot(paymentDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as PaymentSettings;
+        setPaymentSettingsState(data);
+        localStorage.setItem(PAYMENT_SETTINGS_KEY, JSON.stringify(data));
+        setIsOnlineSynced(true);
+      } else {
+        // Seed initial payment settings
+        setDoc(paymentDocRef, DEFAULT_PAYMENT_SETTINGS, { merge: true }).catch(console.warn);
+      }
+    }, (err) => {
+      console.warn('Firestore payment listener error:', err);
+    });
+
+    return () => {
+      unsubSettings();
+      unsubCategories();
+      unsubProducts();
+      unsubOrders();
+      unsubPayment();
+    };
+  }, []);
+
+  // Listen to custom cross-tab events
+  useEffect(() => {
     const handleBrandingUpdate = () => {
       setStoreLogo(getStoredLogo());
       setStoreHeroBannerState(getStoredHeroBanner());
       setStoreBackgroundState(getStoredBackground());
     };
 
-    const handleOrdersUpdate = () => {
-      try {
-        const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setOrders(parsed);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    window.addEventListener('dissof_whatsapp_updated', handleWaUpdate);
-    window.addEventListener('dissof_orders_updated', handleOrdersUpdate);
     window.addEventListener('dissof_branding_updated', handleBrandingUpdate);
-    window.addEventListener('storage', (e) => {
-      if (e.key === WHATSAPP_STORAGE_KEY) handleWaUpdate();
-      if (e.key === ORDERS_STORAGE_KEY) handleOrdersUpdate();
-      if (e.key === STORE_LOGO_KEY || e.key === STORE_HERO_BANNER_KEY || e.key === STORE_BACKGROUND_KEY) handleBrandingUpdate();
-    });
-
     return () => {
-      window.removeEventListener('dissof_whatsapp_updated', handleWaUpdate);
-      window.removeEventListener('dissof_orders_updated', handleOrdersUpdate);
       window.removeEventListener('dissof_branding_updated', handleBrandingUpdate);
     };
   }, []);
 
   const refreshData = useCallback(async () => {
-    try {
-      const [s, c, p, ev, t, ords] = await Promise.all([
-        api.getSettings().catch(() => null),
-        api.getCategories().catch(() => []),
-        api.getProducts({ all: true }).catch(() => []),
-        api.getEvents().catch(() => []),
-        api.getTestimonials().catch(() => []),
-        api.getOrders().catch(() => []),
-      ]);
-
-      // 1. Settings
-      const storedWA = localStorage.getItem(WHATSAPP_STORAGE_KEY);
-      const storedSettingsRaw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (storedSettingsRaw) {
-        try {
-          const parsed = JSON.parse(storedSettingsRaw);
-          setSettings({
-            ...DEFAULT_SETTINGS,
-            ...parsed,
-            whatsapp_number: storedWA || parsed.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number,
-          });
-        } catch {
-          // ignore
-        }
-      } else if (s) {
-        const merged = { ...s, whatsapp_number: storedWA || s.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number };
-        setSettings(merged);
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
-      }
-
-      if (ev && ev.length > 0) setEvents(ev);
-      if (t && t.length > 0) setTestimonials(t);
-
-      // 2. Categories: check LocalStorage first
-      const localCatRaw = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-      if (localCatRaw) {
-        try {
-          const parsed = JSON.parse(localCatRaw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setCategories(parsed);
-          }
-        } catch {
-          // ignore
-        }
-      } else if (c && c.length > 0) {
-        const enriched = c.map((cat: Category) => {
-          const def = DEFAULT_CATEGORIES.find((d) => d.id === cat.id || d.slug === cat.slug);
-          return {
-            ...cat,
-            image: cat.image || def?.image || DEFAULT_CATEGORIES[0].image,
-            icon: cat.icon || def?.icon || '✨',
-          };
-        });
-        setCategories(enriched);
-        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(enriched));
-      } else {
-        setCategories(DEFAULT_CATEGORIES);
-        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
-      }
-
-      // 3. Products: check LocalStorage first
-      const localProductsRaw = localStorage.getItem(PRODUCTS_STORAGE_KEY);
-      if (localProductsRaw) {
-        try {
-          const parsed = JSON.parse(localProductsRaw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setProducts(parsed);
-          }
-        } catch {
-          // fallback
-        }
-      } else if (p && p.length > 0) {
-        setProducts(p);
-        localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(p));
-      }
-
-      // 4. Orders: check LocalStorage first
-      const localOrdersRaw = localStorage.getItem(ORDERS_STORAGE_KEY);
-      if (localOrdersRaw) {
-        try {
-          const parsed = JSON.parse(localOrdersRaw);
-          if (Array.isArray(parsed)) {
-            setOrders(parsed);
-          }
-        } catch {
-          // ignore
-        }
-      } else if (ords && ords.length > 0) {
-        setOrders(ords);
-        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(ords));
-      }
-    } catch (err) {
-      console.error('Error fetching store data:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    // Data is synced real-time via Firestore listeners
   }, []);
 
-  useEffect(() => {
-    refreshData();
-  }, [refreshData]);
+  // =========================================================================
+  // 2. REAL-TIME MUTATIONS (ONLINE DATABASE FIRST + LOCALSTORAGE FALLBACK)
+  // =========================================================================
 
-  // Save full SiteSettings to LocalStorage
+  // Save Settings & Branding Online
   const saveSettingsLocal = async (newSettings: Partial<SiteSettings>): Promise<SiteSettings> => {
     const updated: SiteSettings = {
       ...settings,
@@ -598,18 +755,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setStoredWhatsAppNumber(newSettings.whatsapp_number);
     }
 
-    try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
-      setSettings(updated);
-    } catch (e) {
-      console.error('Failed to save settings to LocalStorage:', e);
-    }
+    setSettings(updated);
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
 
-    // Background sync
     try {
-      await api.updateSettings(updated);
-    } catch {
-      // ignore
+      await setDoc(doc(db, 'settings', 'store_config'), updated, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for settings:', e);
     }
 
     return updated;
@@ -618,56 +770,87 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateWhatsAppNumberLocal = (newNumber: string) => {
     setStoredWhatsAppNumber(newNumber);
     setSettings((prev) => ({ ...prev, whatsapp_number: newNumber }));
+    setDoc(doc(db, 'settings', 'store_config'), { whatsapp_number: newNumber }, { merge: true }).catch(console.warn);
   };
 
-  // 100% Client-Side Store Logo & Hero Banner Handlers
   const saveStoreLogo = async (logoData: string): Promise<void> => {
     setStoredLogo(logoData);
     setStoreLogo(logoData);
     setSettings((prev) => (prev ? { ...prev, logo_url: logoData } : prev));
+    try {
+      await setDoc(doc(db, 'settings', 'store_config'), { logo_url: logoData }, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for logo:', e);
+    }
   };
 
   const removeStoreLogo = async (): Promise<void> => {
     removeStoredLogo();
     setStoreLogo(null);
     setSettings((prev) => (prev ? { ...prev, logo_url: undefined } : prev));
+    try {
+      await setDoc(doc(db, 'settings', 'store_config'), { logo_url: '' }, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for removing logo:', e);
+    }
   };
 
   const saveHeroBanner = async (bannerData: string): Promise<void> => {
     setStoredHeroBanner(bannerData);
     setStoreHeroBannerState(bannerData);
     setSettings((prev) => (prev ? { ...prev, hero_banner_url: bannerData } : prev));
+    try {
+      await setDoc(doc(db, 'settings', 'store_config'), { hero_banner_url: bannerData }, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for hero banner:', e);
+    }
   };
 
   const removeHeroBanner = async (): Promise<void> => {
     removeStoredHeroBanner();
     setStoreHeroBannerState(null);
     setSettings((prev) => (prev ? { ...prev, hero_banner_url: undefined } : prev));
+    try {
+      await setDoc(doc(db, 'settings', 'store_config'), { hero_banner_url: '' }, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for removing hero banner:', e);
+    }
   };
 
   const saveStoreBackground = async (bg: StoreBackgroundData): Promise<void> => {
     setStoredBackground(bg);
     setStoreBackgroundState(bg);
     setSettings((prev) => (prev ? { ...prev, background: bg } : prev));
+    try {
+      await setDoc(doc(db, 'settings', 'store_config'), { background: bg }, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for background:', e);
+    }
   };
 
   const resetStoreBackground = async (): Promise<void> => {
     resetStoredBackground();
-    setStoreBackgroundState(getStoredBackground());
-    setSettings((prev) => (prev ? { ...prev, background: getStoredBackground() } : prev));
-  };
-
-  // Save payment settings to LocalStorage 'paymentSettings'
-  const savePaymentSettings = (newSettings: PaymentSettings) => {
-    setPaymentSettingsState(newSettings);
+    const defaultBg = getStoredBackground();
+    setStoreBackgroundState(defaultBg);
+    setSettings((prev) => (prev ? { ...prev, background: defaultBg } : prev));
     try {
-      localStorage.setItem(PAYMENT_SETTINGS_KEY, JSON.stringify(newSettings));
+      await setDoc(doc(db, 'settings', 'store_config'), { background: defaultBg }, { merge: true });
     } catch (e) {
-      console.error('Failed to save payment settings to LocalStorage:', e);
+      console.warn('Online sync failed for reset background:', e);
     }
   };
 
-  // Save category to LocalStorage 'categories'
+  const savePaymentSettings = async (newSettings: PaymentSettings) => {
+    setPaymentSettingsState(newSettings);
+    localStorage.setItem(PAYMENT_SETTINGS_KEY, JSON.stringify(newSettings));
+    try {
+      await setDoc(doc(db, 'payment_settings', 'main_config'), newSettings, { merge: true });
+    } catch (e) {
+      console.warn('Online sync failed for payment settings:', e);
+    }
+  };
+
+  // Categories Online Sync
   const saveCategoryLocal = async (categoryName: string, categoryData?: Partial<Category>): Promise<Category> => {
     const trimmed = categoryName.trim();
     if (!trimmed) {
@@ -680,7 +863,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return existing;
     }
 
-    // Pick aesthetic image fallback matching category name
     let fallbackImg = DEFAULT_CATEGORIES[0].image;
     if (slug.includes('phone') || slug.includes('charm')) fallbackImg = DEFAULT_CATEGORIES[1].image;
     else if (slug.includes('neck') || slug.includes('kalung')) fallbackImg = DEFAULT_CATEGORIES[2].image;
@@ -698,17 +880,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const updatedCategories = [...categories, newCat];
+    setCategories(updatedCategories);
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updatedCategories));
+
     try {
-      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updatedCategories));
-      setCategories(updatedCategories);
-      return newCat;
-    } catch (err) {
-      console.error('Failed to save category in LocalStorage:', err);
-      throw new Error('Gagal menyimpan kategori baru ke LocalStorage.');
+      await setDoc(doc(db, 'categories', newCat.id), newCat, { merge: true });
+    } catch (e) {
+      console.warn('Failed to sync new category to online database:', e);
     }
+
+    return newCat;
   };
 
-  // Save / Edit full category (with image, description, icon)
   const saveFullCategoryLocal = async (category: Category): Promise<Category> => {
     const current = [...categories];
     const index = current.findIndex((c) => c.id === category.id || c.slug === category.slug);
@@ -721,48 +904,53 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updated = [...current, category];
     }
 
+    setCategories(updated);
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
+
     try {
-      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
-      setCategories(updated);
-      return category;
-    } catch (err) {
-      console.error('Failed to save full category in LocalStorage:', err);
-      throw new Error('Gagal menyimpan perubahan kategori.');
+      await setDoc(doc(db, 'categories', category.id), category, { merge: true });
+    } catch (e) {
+      console.warn('Failed to sync category update to online database:', e);
     }
+
+    return category;
   };
 
   const deleteCategoryLocal = async (categoryId: string): Promise<void> => {
     const updated = categories.filter((c) => c.id !== categoryId && c.slug !== categoryId);
+    setCategories(updated);
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
+
     try {
-      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
-      setCategories(updated);
-    } catch (err) {
-      console.error('Failed to delete category:', err);
-      throw new Error('Gagal menghapus kategori.');
+      await deleteDoc(doc(db, 'categories', categoryId));
+    } catch (e) {
+      console.warn('Failed to delete category from online database:', e);
     }
   };
 
-  const resetCategoriesToDefault = () => {
+  const resetCategoriesToDefault = async () => {
+    setCategories(DEFAULT_CATEGORIES);
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
+
     try {
-      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
-      setCategories(DEFAULT_CATEGORIES);
-    } catch (err) {
-      console.error('Failed to reset categories:', err);
+      for (const cat of DEFAULT_CATEGORIES) {
+        await setDoc(doc(db, 'categories', cat.id), cat, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Failed to reset categories in online database:', e);
     }
   };
 
-  // Local-first product saving (handles add and edit without external backend failure)
+  // Products Online Sync
   const saveProductLocal = async (productData: Partial<Product>, editingId?: string): Promise<Product> => {
     let currentProducts = [...products];
 
-    // Find category name
     const category = categories.find((c) => c.id === productData.category_id);
     const categoryName = category?.name || productData.category_name || 'Accessories';
 
     let updatedProduct: Product;
 
     if (editingId) {
-      // Edit existing product
       const targetIndex = currentProducts.findIndex((p) => p.id === editingId);
       if (targetIndex === -1) {
         throw new Error(`Produk dengan ID ${editingId} tidak ditemukan.`);
@@ -777,7 +965,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       currentProducts[targetIndex] = updatedProduct;
     } else {
-      // Create new product
       const slug = (productData.name || 'product')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -809,37 +996,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       currentProducts = [updatedProduct, ...currentProducts];
     }
 
+    setProducts(currentProducts);
+    localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(currentProducts));
+
     try {
-      localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(currentProducts));
-      setProducts(currentProducts);
-      return updatedProduct;
-    } catch (storageErr: any) {
-      console.error('LocalStorage write error:', storageErr);
-      if (
-        storageErr.name === 'QuotaExceededError' ||
-        storageErr.code === 22 ||
-        storageErr.message?.toLowerCase().includes('quota') ||
-        storageErr.message?.toLowerCase().includes('storage')
-      ) {
-        throw new Error('Ukuran gambar terlalu besar atau memori browser penuh. Silakan kurangi jumlah foto, pilih foto yang lebih kecil, atau gunakan link/URL gambar.');
-      }
-      throw new Error('Gagal menyimpan ke penyimpanan lokal browser. Pastikan browser mengizinkan penyimpanan LocalStorage.');
+      await setDoc(doc(db, 'products', updatedProduct.id), updatedProduct, { merge: true });
+    } catch (e) {
+      console.warn('Failed to sync product to online database:', e);
     }
+
+    return updatedProduct;
   };
 
-  // Local-first product deletion
   const deleteProductLocal = async (productId: string): Promise<void> => {
     const updatedProducts = products.filter((p) => p.id !== productId);
+    setProducts(updatedProducts);
+    localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(updatedProducts));
+
     try {
-      localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(updatedProducts));
-      setProducts(updatedProducts);
-    } catch (storageErr: any) {
-      console.error('LocalStorage delete error:', storageErr);
-      throw new Error('Gagal menghapus produk dari penyimpanan lokal.');
+      await deleteDoc(doc(db, 'products', productId));
+    } catch (e) {
+      console.warn('Failed to delete product from online database:', e);
     }
   };
 
-  // Save full Order to LocalStorage 'orders' & fire real-time events & play chime
+  // Orders Online Sync (Real-time sync between buyer & admin HP)
   const createOrderLocal = async (orderData: {
     customer_name: string;
     customer_whatsapp: string;
@@ -862,8 +1043,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       custom_note: item.customNote,
     }));
 
+    const newOrderId = `ORD-${Date.now().toString().slice(-6)}`;
     const newOrder: Order = {
-      id: `ORD-${Date.now().toString().slice(-6)}`,
+      id: newOrderId,
       customer_name: orderData.customer_name,
       customer_whatsapp: orderData.customer_whatsapp,
       customer_address: orderData.customer_address || 'Dumai (Ambil di tempat / Kirim)',
@@ -880,78 +1062,49 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updated_at: new Date().toISOString(),
     };
 
-    try {
-      const savedOrdersRaw = localStorage.getItem(ORDERS_STORAGE_KEY);
-      const existingOrders = savedOrdersRaw ? JSON.parse(savedOrdersRaw) : [];
-      const updatedOrders = [newOrder, ...(Array.isArray(existingOrders) ? existingOrders : [])];
-      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
-      setOrders(updatedOrders);
+    // Update local state immediately for instant feedback
+    const updatedOrders = [newOrder, ...orders];
+    setOrders(updatedOrders);
+    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
 
-      // Trigger custom notification event & sound
-      window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: newOrder }));
-      window.dispatchEvent(new Event('dissof_orders_updated'));
-      playNotificationChime();
-    } catch (err: any) {
-      console.error('Failed to save order to LocalStorage:', err);
+    // Push to Firestore Online Database (Directly triggers Admin's dashboard in real-time)
+    try {
+      await setDoc(doc(db, 'orders', newOrderId), newOrder);
+    } catch (e) {
+      console.warn('Failed to sync new order to Firestore:', e);
     }
 
-    // Optional background sync
-    try {
-      await api.createOrder({
-        customer_name: newOrder.customer_name,
-        customer_whatsapp: newOrder.customer_whatsapp,
-        customer_address: newOrder.customer_address,
-        items: newOrder.items,
-        subtotal: newOrder.subtotal,
-        total: newOrder.total,
-        order_notes: newOrder.order_notes,
-      });
-    } catch {
-      // ignore
-    }
+    window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: newOrder }));
+    window.dispatchEvent(new Event('dissof_orders_updated'));
+    playNotificationChime();
 
     return newOrder;
   };
 
-  // Update order status 100% Client-Side without error pop-up
   const updateOrderStatusLocal = async (orderId: string, status: Order['status']): Promise<void> => {
-    setOrders((prev) => {
-      const updated = prev.map((o) => (o.id === orderId ? { ...o, status, updated_at: new Date().toISOString() } : o));
-      try {
-        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
-        window.dispatchEvent(new Event('dissof_orders_updated'));
-      } catch (e) {
-        console.warn('Failed to update orders in LocalStorage:', e);
-      }
-      return updated;
-    });
+    const updated = orders.map((o) => (o.id === orderId ? { ...o, status, updated_at: new Date().toISOString() } : o));
+    setOrders(updated);
+    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
 
-    // Optional background sync (fails silently without breaking UI)
     try {
-      await api.updateOrderStatus(orderId, status);
-    } catch {
-      // ignore
+      await updateDoc(doc(db, 'orders', orderId), {
+        status,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Failed to sync order status update to online database:', e);
     }
   };
 
-  // Delete order 100% Client-Side without error pop-up
   const deleteOrderLocal = async (orderId: string): Promise<void> => {
-    setOrders((prev) => {
-      const updated = prev.filter((o) => o.id !== orderId);
-      try {
-        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
-        window.dispatchEvent(new Event('dissof_orders_updated'));
-      } catch (e) {
-        console.warn('Failed to delete order from LocalStorage:', e);
-      }
-      return updated;
-    });
+    const updated = orders.filter((o) => o.id !== orderId);
+    setOrders(updated);
+    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
 
-    // Optional background sync
     try {
-      await api.deleteOrder(orderId);
-    } catch {
-      // ignore
+      await deleteDoc(doc(db, 'orders', orderId));
+    } catch (e) {
+      console.warn('Failed to delete order from online database:', e);
     }
   };
 
@@ -1023,7 +1176,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }) => {
     if (cart.length === 0) return;
 
-    // 1. Save order locally
     await createOrderLocal({
       customer_name: customer.name,
       customer_whatsapp: customer.phone,
@@ -1032,7 +1184,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       payment_method: 'whatsapp',
     });
 
-    // 2. Trigger festive confetti
     confetti({
       particleCount: 90,
       spread: 70,
@@ -1040,7 +1191,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       colors: ['#F472B6', '#FB7185', '#C084FC', '#FDE047', '#A7F3D0'],
     });
 
-    // 3. Construct clean WhatsApp message
     let itemsText = '';
     cart.forEach((item, index) => {
       itemsText += `${index + 1}. *${item.product.name}*\n`;
@@ -1069,11 +1219,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       `━━━━━━━━━━━━━━━━━━━\n\n` +
       `Mohon info total ongkir & rekening pembayarannya ya kak. Terima kasih ♡`;
 
-    // 4. Open WhatsApp
     const waUrl = createWhatsAppLink(waNumber, message);
     window.location.href = waUrl;
 
-    // 5. Clear cart and close drawer
     clearCart();
     setIsCartOpen(false);
   };
@@ -1092,6 +1240,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         wishlist,
         isCartOpen,
         isLoading,
+        isOnlineSynced,
         storeLogo,
         storeHeroBanner,
         storeBackground,

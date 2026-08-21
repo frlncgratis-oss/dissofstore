@@ -247,7 +247,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               </div>
               <div className="text-[11px] leading-tight">
                 <p className="font-bold text-[#2E241E] truncate max-w-[90px]">{user?.name || 'Admin DISSOF'}</p>
-                <p className="text-[9px] text-gray-400 uppercase font-semibold">100% LocalStorage</p>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Cloud Firestore</p>
+                </div>
               </div>
             </div>
 

@@ -45,7 +45,7 @@ export const AdminOrdersPage: React.FC = () => {
   };
 
   const handleDeleteOrder = async (order: Order) => {
-    if (confirm(`Hapus catatan pesanan #${order.id} dari "${order.customer_name}"? Data akan terhapus dari LocalStorage.`)) {
+    if (confirm(`Hapus catatan pesanan #${order.id} dari "${order.customer_name}"? Data akan terhapus dari Database Online.`)) {
       try {
         await deleteOrderLocal(order.id);
       } catch (e) {

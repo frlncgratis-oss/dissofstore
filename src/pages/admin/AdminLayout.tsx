@@ -51,15 +51,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       const order = e.detail as Order;
       if (order) {
         setNewOrderNotification(order);
-        playNotificationChime();
       }
     };
 
+    const handleOpenOrdersTab = () => {
+      setCurrentAdminTab('orders');
+    };
+
     window.addEventListener('dissof_new_order', handleNewOrder);
+    window.addEventListener('dissof_open_orders_tab', handleOpenOrdersTab);
     return () => {
       window.removeEventListener('dissof_new_order', handleNewOrder);
+      window.removeEventListener('dissof_open_orders_tab', handleOpenOrdersTab);
     };
-  }, []);
+  }, [setCurrentAdminTab]);
 
   const menuItems = [
     { id: 'dashboard', label: 'Ringkasan / Stats', icon: LayoutDashboard },
@@ -120,7 +125,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           </div>
 
           <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
-            <span className="text-[10px] text-gray-400">Tersimpan di LocalStorage</span>
+            <div className="flex items-center gap-1.5 text-[10px] text-pink-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Real-Time Firestore Sync</span>
+            </div>
             <button
               onClick={() => {
                 setNewOrderNotification(null);

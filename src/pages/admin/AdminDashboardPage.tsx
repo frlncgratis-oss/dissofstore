@@ -26,7 +26,12 @@ import {
   RefreshCw,
   Info,
   Check,
-  ChevronDown
+  ChevronDown,
+  Bell,
+  Volume2,
+  Radio,
+  ShieldCheck,
+  X
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { 
@@ -37,16 +42,32 @@ import {
   isSameMonth, 
   getMonthName, 
   INDONESIAN_MONTHS, 
-  createWhatsAppLink 
+  createWhatsAppLink,
+  playNotificationChime,
+  requestBrowserNotificationPermission,
+  sendBrowserNotification,
+  isBrowserNotificationSupported
 } from '../../lib/utils';
 import { Order } from '../../types';
+import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 
 interface AdminDashboardPageProps {
   onNavigateTab: (tab: string) => void;
 }
 
 export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNavigateTab }) => {
-  const { settings, products, categories, orders, updateOrderStatusLocal } = useStore();
+  const { settings, products, categories, orders, updateOrderStatusLocal, isOnlineSynced } = useStore();
+
+  const [previewProof, setPreviewProof] = useState<string | null>(null);
+
+  // Browser push notification state
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'default';
+  });
+  const [testNotificationFeedback, setTestNotificationFeedback] = useState<string>('');
 
   // Clock state that refreshes every 30 seconds for live 24h reset & time tracking
   const [currentTime, setCurrentTime] = useState<Date>(() => new Date());
@@ -57,6 +78,52 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
     }, 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // Check and update notification permission on focus
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      
+      // If permission is default, ask for permission so Admin gets notified
+      if (Notification.permission === 'default') {
+        requestBrowserNotificationPermission().then((perm) => {
+          setNotificationPermission(perm);
+        });
+      }
+    }
+  }, []);
+
+  const handleRequestPermission = async () => {
+    const perm = await requestBrowserNotificationPermission();
+    setNotificationPermission(perm);
+    if (perm === 'granted') {
+      playNotificationChime();
+      sendBrowserNotification('🎉 Notifikasi Pesanan DISSOF Aktif!', {
+        body: 'HP / Laptop Admin akan berbunyi dan memunculkan pop-up setiap pembeli menyelesaikan checkout.',
+      });
+      setTestNotificationFeedback('Izin notifikasi berhasil diaktifkan ♡');
+      setTimeout(() => setTestNotificationFeedback(''), 3500);
+    } else if (perm === 'denied') {
+      setTestNotificationFeedback('Izin diblokir di browser. Mohon izinkan via ikon gembok di address bar.');
+      setTimeout(() => setTestNotificationFeedback(''), 4500);
+    }
+  };
+
+  const handleTestNotification = () => {
+    playNotificationChime();
+    if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
+      sendBrowserNotification('🛍️ [Uji Coba] Pesanan Baru Masuk!', {
+        body: 'Contoh: Nabila Putri Zahra • Rp 85.000 (2x Strawberry Dream Bracelet)',
+        onClick: () => {
+          onNavigateTab('orders');
+        }
+      });
+      setTestNotificationFeedback('Suara chime berbunyi & notifikasi pop-up terkirim ♡');
+    } else {
+      setTestNotificationFeedback('Suara chime berbunyi! Aktifkan izin pop-up untuk memunculkan notifikasi sistem.');
+    }
+    setTimeout(() => setTestNotificationFeedback(''), 3500);
+  };
 
   // Selected Month & Year filter for Monthly Revenue Analytics
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
@@ -382,6 +449,68 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             <span>Tambah Produk</span>
           </button>
         </div>
+      </div>
+
+      {/* Real-time Firestore Sync & Push Notification Card */}
+      <div className="bg-white rounded-3xl p-5 border border-pink-100 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-pink-200/40 to-transparent rounded-bl-full pointer-events-none" />
+        
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-pink-200">
+              <Radio className="w-5 h-5 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-[#2D2D2D]">
+                  Sinkronisasi Pesanan Real-Time (Cloud Firestore)
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span>Live onSnapshot Aktif</span>
+                </span>
+              </div>
+              <p className="text-xs text-[#7A6A61] leading-relaxed">
+                Pesanan baru yang dibuat oleh pembeli di HP manapun otomatis langsung masuk ke layar Admin secara instan tanpa perlu refresh.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
+            {notificationPermission !== 'granted' ? (
+              <button
+                type="button"
+                onClick={handleRequestPermission}
+                className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Bell className="w-4 h-4" />
+                <span>Aktifkan Notifikasi Pop-up</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Notifikasi Pop-up Aktif</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleTestNotification}
+              className="px-3.5 py-2.5 rounded-2xl bg-[#FAF7F2] border border-pink-200 hover:bg-pink-100/70 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
+              title="Uji coba suara lonceng chime dan notifikasi pop-up"
+            >
+              <Volume2 className="w-4 h-4 text-pink-500" />
+              <span>Tes Suara &amp; Pop-up</span>
+            </button>
+          </div>
+        </div>
+
+        {testNotificationFeedback && (
+          <div className="mt-3 pt-3 border-t border-pink-100/70 flex items-center gap-2 text-xs font-bold text-pink-600 animate-in fade-in duration-200">
+            <Sparkles className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+            <span>{testNotificationFeedback}</span>
+          </div>
+        )}
       </div>
 
       {/* Revenue Calculation Settings Bar / Notice */}
@@ -878,77 +1007,140 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-pink-100 text-[#8C7D75] uppercase tracking-wider font-bold">
-                  <th className="pb-3 px-3">Order ID & Tanggal</th>
+                  <th className="pb-3 px-3">Order ID &amp; Tanggal</th>
                   <th className="pb-3 px-3">Customer</th>
                   <th className="pb-3 px-3">Produk</th>
                   <th className="pb-3 px-3">Total Omset</th>
                   <th className="pb-3 px-3">Metode</th>
+                  <th className="pb-3 px-3">Bukti Bayar</th>
                   <th className="pb-3 px-3">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-pink-50">
-                {recentOrders.map((ord) => (
-                  <tr key={ord.id} className="hover:bg-[#FAF8F5] transition-colors">
-                    <td className="py-3.5 px-3">
-                      <p className="font-mono font-bold text-[#2D2D2D]">#{ord.id}</p>
-                      <span className="text-[10px] text-[#8C7D75]">
-                        {formatFullDateTime(ord.created_at)}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <p className="font-bold text-[#2D2D2D]">{ord.customer_name}</p>
-                      <span className="text-[10px] text-gray-400 font-mono">{ord.customer_whatsapp}</span>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <p className="font-medium text-[#574941] line-clamp-1 max-w-[200px]">
-                        {ord.items.map((it) => `${it.product_name} (${it.quantity}x)`).join(', ')}
-                      </p>
-                    </td>
-                    <td className="py-3.5 px-3 font-bold text-pink-600 font-mono text-sm">
-                      {formatIDR(ord.total)}
-                    </td>
-                    <td className="py-3.5 px-3">
-                      {ord.payment_method === 'bank_transfer' ? (
-                        <span className="text-[10px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-bold">
-                          Transfer Bank
+                {recentOrders.map((ord) => {
+                  const proofSrc = ord.payment_proof || ord.payment_proof_url;
+                  return (
+                    <tr key={ord.id} className="hover:bg-[#FAF8F5] transition-colors">
+                      <td className="py-3.5 px-3">
+                        <p className="font-mono font-bold text-[#2D2D2D]">#{ord.id}</p>
+                        <span className="text-[10px] text-[#8C7D75]">
+                          {formatFullDateTime(ord.created_at)}
                         </span>
-                      ) : ord.payment_method === 'qris' ? (
-                        <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold">
-                          QRIS
-                        </span>
-                      ) : (
-                        <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
-                          WhatsApp
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <select
-                        value={ord.status}
-                        onChange={(e) => updateOrderStatusLocal(ord.id, e.target.value as any)}
-                        className={`text-[11px] font-bold px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none ${
-                          ord.status === 'Completed'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : ord.status === 'Processing'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : ord.status === 'Cancelled'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Processing">Processing (Hitung Omset)</option>
-                        <option value="Completed">Completed (Hitung Omset)</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <p className="font-bold text-[#2D2D2D]">{ord.customer_name}</p>
+                        <span className="text-[10px] text-gray-400 font-mono">{ord.customer_whatsapp}</span>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <p className="font-medium text-[#574941] line-clamp-1 max-w-[200px]">
+                          {ord.items.map((it) => `${it.product_name} (${it.quantity}x)`).join(', ')}
+                        </p>
+                      </td>
+                      <td className="py-3.5 px-3 font-bold text-pink-600 font-mono text-sm">
+                        {formatIDR(ord.total)}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        {ord.payment_method === 'bank_transfer' ? (
+                          <span className="text-[10px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-bold">
+                            Transfer Bank
+                          </span>
+                        ) : ord.payment_method === 'qris' ? (
+                          <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                            QRIS
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
+                            WhatsApp
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        {proofSrc ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewProof(proofSrc)}
+                            className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-emerald-50 border border-emerald-200 cursor-pointer group"
+                            title="Klik untuk zoom bukti transfer"
+                          >
+                            <ImageWithFallback
+                              src={proofSrc}
+                              alt="Bukti"
+                              className="w-8 h-8 rounded object-cover border border-emerald-300"
+                            />
+                            <span className="text-[10px] font-bold text-emerald-700 group-hover:underline flex items-center gap-0.5">
+                              <Eye className="w-3 h-3" />
+                              <span>Lihat</span>
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 italic">Tanpa Foto</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <select
+                          value={ord.status}
+                          onChange={(e) => updateOrderStatusLocal(ord.id, e.target.value as any)}
+                          className={`text-[11px] font-bold px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none ${
+                            ord.status === 'Completed'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : ord.status === 'Processing'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : ord.status === 'Cancelled'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Processing">Processing (Hitung Omset)</option>
+                          <option value="Completed">Completed (Hitung Omset)</option>
+                          <option value="Cancelled">Cancelled</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* Proof Modal Zoom in Dashboard */}
+      {previewProof && (
+        <div
+          className="fixed inset-0 z-60 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setPreviewProof(null)}
+        >
+          <div className="max-w-xl w-full bg-white rounded-3xl overflow-hidden p-5 space-y-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-2 border-b border-black/5">
+              <span className="font-bold text-xs text-[#2D2D2D]">Foto Bukti Pembayaran / Transfer Customer</span>
+              <button
+                type="button"
+                onClick={() => setPreviewProof(null)}
+                className="p-1 rounded-full text-gray-400 hover:text-black cursor-pointer hover:bg-black/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex items-center justify-center bg-[#F9F7F2] rounded-2xl p-2 max-h-[70vh] overflow-auto">
+              <ImageWithFallback
+                src={previewProof}
+                alt="Zoom Bukti Transfer"
+                className="w-full h-auto max-h-[65vh] object-contain rounded-xl"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPreviewProof(null)}
+                className="px-4 py-2 rounded-xl bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

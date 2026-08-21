@@ -29,6 +29,9 @@ import {
   getStoredWhatsAppNumber, 
   setStoredWhatsAppNumber, 
   playNotificationChime,
+  sendBrowserNotification,
+  requestBrowserNotificationPermission,
+  isBrowserNotificationSupported,
   getStoredLogo,
   setStoredLogo,
   removeStoredLogo,
@@ -237,132 +240,21 @@ export const DEFAULT_INITIAL_PRODUCTS: Product[] = [
   }
 ];
 
-const getDefaultSampleOrders = (): Order[] => {
-  const now = new Date();
-  const today1 = new Date(now.getTime() - 1000 * 60 * 35);
-  const today2 = new Date(now.getTime() - 1000 * 60 * 150);
-  const yesterday1 = new Date(now.getTime() - 1000 * 60 * 60 * 25);
-  const yesterday2 = new Date(now.getTime() - 1000 * 60 * 60 * 29);
-  const day3 = new Date(now.getTime() - 1000 * 60 * 60 * 68);
-  const day5 = new Date(now.getTime() - 1000 * 60 * 60 * 120);
-  const day9 = new Date(now.getTime() - 1000 * 60 * 60 * 216);
+const SAMPLE_DUMMY_ORDER_IDS = new Set([
+  'ORD-89211',
+  'ORD-89210',
+  'ORD-89209',
+  'ORD-89208',
+  'ORD-89207',
+  'ORD-89206',
+  'ORD-89205'
+]);
 
-  return [
-    {
-      id: 'ORD-89211',
-      customer_name: 'Nabila Putri Zahra',
-      customer_whatsapp: '081234567890',
-      customer_address: 'Jl. Jend. Sudirman No. 45, Dumai Kota',
-      items: [
-        { product_id: '1', product_name: 'Strawberry Dream Charm Bracelet', price: 35000, quantity: 2, variant: 'Pastel Pink' },
-        { product_id: '2', product_name: 'Custom Initial Daisy Beads Ring', price: 15000, quantity: 1, variant: 'Letter N' }
-      ],
-      subtotal: 85000,
-      total: 85000,
-      payment_method: 'bank_transfer',
-      status: 'Processing',
-      source: 'online',
-      created_at: today1.toISOString(),
-      updated_at: today1.toISOString()
-    },
-    {
-      id: 'ORD-89210',
-      customer_name: 'Aulia Rahmawati',
-      customer_whatsapp: '085278912345',
-      customer_address: 'Dumai Timur (Ambil di Booth Pop-Up)',
-      items: [
-        { product_id: '3', product_name: 'Ocean Breeze Pearl Phone Strap', price: 45000, quantity: 1 }
-      ],
-      subtotal: 45000,
-      total: 45000,
-      payment_method: 'qris',
-      status: 'Completed',
-      source: 'online',
-      created_at: today2.toISOString(),
-      updated_at: today2.toISOString()
-    },
-    {
-      id: 'ORD-89209',
-      customer_name: 'Clarissa Maharani',
-      customer_whatsapp: '082198765432',
-      customer_address: 'Bagan Besar, Dumai',
-      items: [
-        { product_id: '4', product_name: 'Fairy Ribbon Pastel Necklace', price: 55000, quantity: 1 }
-      ],
-      subtotal: 55000,
-      total: 55000,
-      payment_method: 'whatsapp',
-      status: 'Completed',
-      source: 'whatsapp',
-      created_at: yesterday1.toISOString(),
-      updated_at: yesterday1.toISOString()
-    },
-    {
-      id: 'ORD-89208',
-      customer_name: 'Dinda Lestari',
-      customer_whatsapp: '081365432198',
-      customer_address: 'Dumai Kota',
-      items: [
-        { product_id: '1', product_name: 'Strawberry Dream Charm Bracelet', price: 35000, quantity: 1 },
-        { product_id: '5', product_name: 'Cherry Blossom Bag Charm', price: 38000, quantity: 1 }
-      ],
-      subtotal: 73000,
-      total: 73000,
-      payment_method: 'bank_transfer',
-      status: 'Completed',
-      source: 'online',
-      created_at: yesterday2.toISOString(),
-      updated_at: yesterday2.toISOString()
-    },
-    {
-      id: 'ORD-89207',
-      customer_name: 'Siti Nurhaliza',
-      customer_whatsapp: '082233445566',
-      customer_address: 'Bukit Kapur, Dumai',
-      items: [
-        { product_id: '2', product_name: 'Custom Initial Daisy Beads Ring', price: 15000, quantity: 3 }
-      ],
-      subtotal: 45000,
-      total: 45000,
-      payment_method: 'qris',
-      status: 'Completed',
-      source: 'online',
-      created_at: day3.toISOString(),
-      updated_at: day3.toISOString()
-    },
-    {
-      id: 'ORD-89206',
-      customer_name: 'Tiara Amanda Putri',
-      customer_whatsapp: '087711223344',
-      customer_address: 'Dumai Barat',
-      items: [
-        { product_id: '6', product_name: 'Sweet Heart DIY Gift Box Set', price: 95000, quantity: 1 }
-      ],
-      subtotal: 95000,
-      total: 95000,
-      payment_method: 'bank_transfer',
-      status: 'Completed',
-      source: 'online',
-      created_at: day5.toISOString(),
-      updated_at: day5.toISOString()
-    },
-    {
-      id: 'ORD-89205',
-      customer_name: 'Rania Bella Safitri',
-      customer_whatsapp: '085344556677',
-      customer_address: 'Sukajadi, Dumai',
-      items: [
-        { product_id: '3', product_name: 'Ocean Breeze Pearl Phone Strap', price: 45000, quantity: 2 }
-      ],
-      subtotal: 90000,
-      total: 90000,
-      payment_method: 'bank_transfer',
-      status: 'Completed',
-      source: 'online',
-      created_at: day9.toISOString(),
-      updated_at: day9.toISOString()
-    }
-  ];
+export const isSampleDummyOrderId = (id?: string): boolean => {
+  if (!id) return false;
+  if (SAMPLE_DUMMY_ORDER_IDS.has(id)) return true;
+  if (id.startsWith('ORD-892')) return true;
+  return false;
 };
 
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
@@ -436,6 +328,7 @@ interface StoreContextType {
     customer_address?: string;
     order_notes?: string;
     payment_method: 'bank_transfer' | 'qris' | 'whatsapp';
+    payment_proof?: string;
     payment_proof_url?: string;
   }) => Promise<Order>;
   updateOrderStatusLocal: (orderId: string, status: Order['status']) => Promise<void>;
@@ -505,20 +398,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return DEFAULT_INITIAL_PRODUCTS;
   });
 
-  // Orders State
+  // Orders State (Starts clean with 0 dummy orders)
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
       const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter((o) => o && !isSampleDummyOrderId(o.id));
+          localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(clean));
+          return clean;
         }
       }
     } catch {
       // ignore
     }
-    return getDefaultSampleOrders();
+    return [];
   });
 
   // Payment Settings State
@@ -581,6 +476,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // ignore
     }
   }, [wishlist]);
+
+  // Ref to track initial Firestore snapshot load so existing orders don't re-trigger notification popups
+  const isFirstOrdersSnapshot = React.useRef(true);
 
   // =========================================================================
   // 1. REAL-TIME FIRESTORE DATABASE LISTENERS (SYNC ACROSS ALL MOBILE & DESKTOP)
@@ -673,25 +571,71 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.warn('Firestore products listener error:', err);
     });
 
-    // D. Listen to Orders (Real-time)
+    // D. Listen to Orders in Real-Time (Firestore Real-time onSnapshot)
+    // Synchronizes orders across buyer devices and Admin screen instantly
     const ordersColRef = collection(db, 'orders');
     const unsubOrders = onSnapshot(ordersColRef, (snap) => {
       if (!snap.empty) {
         const loadedOrders: Order[] = [];
         snap.forEach((docSnap) => {
-          loadedOrders.push({ ...docSnap.data(), id: docSnap.id } as Order);
+          if (isSampleDummyOrderId(docSnap.id)) {
+            // Automatically clean legacy dummy template documents from Firestore
+            deleteDoc(doc(db, 'orders', docSnap.id)).catch(() => {});
+          } else {
+            const data = docSnap.data();
+            const proofVal = data.payment_proof || data.payment_proof_url || '';
+            loadedOrders.push({
+              ...data,
+              id: docSnap.id,
+              payment_proof: proofVal,
+              payment_proof_url: proofVal,
+            } as Order);
+          }
         });
         // Sort newest first
         loadedOrders.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
         setOrders(loadedOrders);
         localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(loadedOrders));
         setIsOnlineSynced(true);
+
+        // Detect newly added order documents in real-time from buyer checkouts
+        if (!isFirstOrdersSnapshot.current) {
+          snap.docChanges().forEach((change) => {
+            if (change.type === 'added' && !isSampleDummyOrderId(change.doc.id)) {
+              const data = change.doc.data();
+              const proofVal = data.payment_proof || data.payment_proof_url || '';
+              const newOrder = {
+                ...data,
+                id: change.doc.id,
+                payment_proof: proofVal,
+                payment_proof_url: proofVal,
+              } as Order;
+              
+              // 1. Play sweet audio chime
+              playNotificationChime();
+
+              // 2. Dispatch cross-app custom event
+              window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: newOrder }));
+              window.dispatchEvent(new Event('dissof_orders_updated'));
+
+              // 3. Trigger Browser Native System Push Notification
+              const itemsList = newOrder.items?.map((it) => `${it.quantity}x ${it.product_name}`).join(', ') || 'Item aksesoris handmade';
+              sendBrowserNotification(`🔔 Pesanan Baru Masuk: ${newOrder.customer_name} ♡`, {
+                body: `ID: #${newOrder.id} • Total: ${formatIDR(newOrder.total)}\nItem: ${itemsList}`,
+                tag: `dissof-order-${newOrder.id}`,
+                onClick: () => {
+                  window.dispatchEvent(new CustomEvent('dissof_open_orders_tab', { detail: newOrder }));
+                }
+              });
+            }
+          });
+        } else {
+          isFirstOrdersSnapshot.current = false;
+        }
       } else {
-        // Seed initial sample orders
-        const samples = getDefaultSampleOrders();
-        samples.forEach((ord) => {
-          setDoc(doc(db, 'orders', ord.id), ord, { merge: true }).catch(console.warn);
-        });
+        isFirstOrdersSnapshot.current = false;
+        setOrders([]);
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify([]));
       }
     }, (err) => {
       console.warn('Firestore orders listener error:', err);
@@ -1027,49 +971,61 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     customer_address?: string;
     order_notes?: string;
     payment_method: 'bank_transfer' | 'qris' | 'whatsapp';
+    payment_proof?: string;
     payment_proof_url?: string;
   }): Promise<Order> => {
     if (cart.length === 0) {
       throw new Error('Keranjang belanja kosong.');
     }
 
-    const orderItems = cart.map((item) => ({
-      product_id: item.product.id,
-      product_name: item.product.name,
-      price: item.product.price,
-      quantity: item.quantity,
-      variant: item.selectedVariant,
-      image: item.product.images?.[0],
-      custom_note: item.customNote,
-    }));
+    const orderItems = cart.map((item) => {
+      const itm: Record<string, any> = {
+        product_id: item.product.id,
+        product_name: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity,
+      };
+      if (item.selectedVariant) itm.variant = item.selectedVariant;
+      if (item.customNote) itm.custom_note = item.customNote;
+      if (item.product.images?.[0]) itm.image = item.product.images[0];
+      return itm;
+    });
 
+    const proofVal = orderData.payment_proof || orderData.payment_proof_url || '';
     const newOrderId = `ORD-${Date.now().toString().slice(-6)}`;
     const newOrder: Order = {
       id: newOrderId,
-      customer_name: orderData.customer_name,
-      customer_whatsapp: orderData.customer_whatsapp,
-      customer_address: orderData.customer_address || 'Dumai (Ambil di tempat / Kirim)',
-      items: orderItems,
+      customer_name: orderData.customer_name.trim(),
+      customer_whatsapp: orderData.customer_whatsapp.trim(),
+      customer_address: orderData.customer_address?.trim() || 'Dumai (Ambil di tempat / Kirim)',
+      items: orderItems as any,
       subtotal: cartSubtotal,
       total: cartSubtotal,
-      order_notes: orderData.order_notes || '',
-      notes: orderData.order_notes || '',
+      order_notes: orderData.order_notes?.trim() || '',
+      notes: orderData.order_notes?.trim() || '',
       source: 'online',
       payment_method: orderData.payment_method,
-      payment_proof_url: orderData.payment_proof_url,
+      payment_proof: proofVal,
+      payment_proof_url: proofVal,
       status: 'Pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
     // Update local state immediately for instant feedback
-    const updatedOrders = [newOrder, ...orders];
+    const updatedOrders = [newOrder, ...orders.filter((o) => !isSampleDummyOrderId(o.id))];
     setOrders(updatedOrders);
     localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
 
     // Push to Firestore Online Database (Directly triggers Admin's dashboard in real-time)
     try {
-      await setDoc(doc(db, 'orders', newOrderId), newOrder);
+      const cleanOrderPayload: Record<string, any> = {};
+      Object.entries(newOrder).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanOrderPayload[key] = val;
+        }
+      });
+      await setDoc(doc(db, 'orders', newOrderId), cleanOrderPayload);
     } catch (e) {
       console.warn('Failed to sync new order to Firestore:', e);
     }

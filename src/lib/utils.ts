@@ -60,17 +60,32 @@ export function createWhatsAppLink(phoneNumber?: string, message: string = ''): 
 }
 
 /**
- * Plays a pleasant, charming two-tone chime via Web Audio API.
- * No external MP3/WAV files required, completely offline and reliable.
+ * Plays a pleasant, charming 3-tone boutique chime via Web Audio API.
+ * No external MP3/WAV files required, completely offline, zero-lag, and reliable.
  */
 export function playNotificationChime(): void {
   try {
+    // Vibrate device if supported on mobile
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([150, 60, 150]);
+      } catch {
+        // ignore vibrate restrictions
+      }
+    }
+
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
+    
+    // Resume context if suspended (browser autoplay policy)
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
     const now = ctx.currentTime;
     
-    // Note 1 (E6 - ~1318.5 Hz)
+    // Note 1: E6 (~1318.5 Hz)
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.type = 'sine';
@@ -82,19 +97,88 @@ export function playNotificationChime(): void {
     osc1.start(now);
     osc1.stop(now + 0.35);
 
-    // Note 2 (A6 - ~1760 Hz) - Higher sweeter note
+    // Note 2: G6 (~1567.98 Hz)
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1760, now + 0.12);
-    gain2.gain.setValueAtTime(0.25, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    osc2.frequency.setValueAtTime(1567.98, now + 0.1);
+    gain2.gain.setValueAtTime(0.22, now + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.6);
+    osc2.start(now + 0.1);
+    osc2.stop(now + 0.45);
+
+    // Note 3: C7 (~2093.00 Hz) - Bright sweet finish
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = 'sine';
+    osc3.frequency.setValueAtTime(2093.00, now + 0.22);
+    gain3.gain.setValueAtTime(0.25, now + 0.22);
+    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+    osc3.connect(gain3);
+    gain3.connect(ctx.destination);
+    osc3.start(now + 0.22);
+    osc3.stop(now + 0.7);
   } catch (e) {
     console.warn('Audio chime could not play:', e);
+  }
+}
+
+/**
+ * Checks whether Browser Notifications are supported on current platform
+ */
+export function isBrowserNotificationSupported(): boolean {
+  return typeof window !== 'undefined' && 'Notification' in window;
+}
+
+/**
+ * Requests browser push notification permission for the Admin
+ */
+export async function requestBrowserNotificationPermission(): Promise<NotificationPermission> {
+  if (!isBrowserNotificationSupported()) {
+    return 'denied';
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    return permission;
+  } catch (err) {
+    console.warn('Could not request notification permission:', err);
+    return 'denied';
+  }
+}
+
+/**
+ * Sends a native browser system notification pop-up
+ */
+export function sendBrowserNotification(
+  title: string, 
+  options?: NotificationOptions & { onClick?: () => void }
+): Notification | null {
+  if (!isBrowserNotificationSupported()) return null;
+  if (Notification.permission !== 'granted') return null;
+
+  try {
+    const notif = new Notification(title, {
+      icon: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=128&auto=format&fit=crop&q=80',
+      badge: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=96&auto=format&fit=crop&q=80',
+      ...options,
+    });
+
+    notif.onclick = () => {
+      try {
+        window.focus();
+      } catch {}
+      if (options?.onClick) {
+        options.onClick();
+      }
+      notif.close();
+    };
+
+    return notif;
+  } catch (err) {
+    console.warn('Failed to display browser notification:', err);
+    return null;
   }
 }
 

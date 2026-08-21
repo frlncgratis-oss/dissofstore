@@ -65,6 +65,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     customerPhone: string;
   } | null>(null);
 
+  const [previewProofModal, setPreviewProofModal] = useState<string | null>(null);
+
   const proofInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -87,7 +89,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     setErrorMsg('');
     try {
       const file = files[0];
-      const base64 = await compressImageFile(file, 700, 0.7);
+      // Automatic compression (max width 800px, JPEG 0.80)
+      const base64 = await compressImageFile(file, 800, 0.8);
       setProofImage(base64);
     } catch (err: any) {
       console.warn('Error compressing transfer proof:', err);
@@ -101,7 +104,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
-      setErrorMsg('Mohon isi nama kamu.');
+      setErrorMsg('Mohon isi nama lengkap kamu.');
       return;
     }
     if (!customerPhone.trim() || customerPhone.length < 8) {
@@ -109,23 +112,25 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
       return;
     }
 
+    // Strict validation: Proof of payment is MANDATORY for Bank Transfer & QRIS
     if (paymentMethod === 'bank_transfer' && !proofImage) {
-      if (!confirm('Kamu belum mengunggah foto bukti transfer. Apakah kamu ingin melanjutkan pesanan dan mengirim bukti transfer via WhatsApp nanti?')) {
-        return;
-      }
+      setErrorMsg('Wajib mengunggah foto bukti pembayaran (struk transfer bank / scan QRIS) untuk menyelesaikan pesanan.');
+      proofInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
     }
 
     setErrorMsg('');
     setIsSubmitting(true);
 
     try {
-      // 1. Create order in LocalStorage
+      // 1. Create order in Firestore & LocalStorage
       const createdOrder = await createOrderLocal({
         customer_name: customerName.trim(),
         customer_whatsapp: customerPhone.trim(),
         customer_address: customerAddress.trim(),
         order_notes: orderNotes.trim(),
         payment_method: paymentMethod,
+        payment_proof: proofImage || undefined,
         payment_proof_url: proofImage || undefined,
       });
 
@@ -586,51 +591,94 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                           )}
 
                           {/* Proof of Transfer Upload */}
-                          <div className="space-y-1.5 pt-1">
-                            <label className="font-bold text-[11px] text-[#2D2D2D] flex items-center justify-between">
-                              <span>Foto Bukti Transfer / Struk <span className="text-rose-500">*</span></span>
+                          <div className="space-y-2 pt-1 border-t border-pink-100/80 mt-2">
+                            <div className="flex items-center justify-between">
+                              <label className="font-bold text-[11px] text-[#2D2D2D] flex items-center gap-1.5">
+                                <span>Bukti Transfer / QRIS</span>
+                                <span className="px-1.5 py-0.2 rounded-md bg-rose-100 text-rose-700 text-[9px] font-extrabold uppercase tracking-wider">
+                                  Wajib Diisi *
+                                </span>
+                              </label>
                               {proofImage && (
                                 <button
                                   type="button"
                                   onClick={() => setProofImage('')}
-                                  className="text-[10px] text-rose-500 hover:underline font-bold cursor-pointer"
+                                  className="text-[10px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer"
                                 >
-                                  Hapus Foto
+                                  Hapus &amp; Ganti Foto
                                 </button>
                               )}
-                            </label>
+                            </div>
 
                             {proofImage ? (
-                              <div className="relative rounded-xl overflow-hidden border-2 border-emerald-300 bg-emerald-50/50 p-2 flex items-center gap-3">
-                                <ImageWithFallback
-                                  src={proofImage}
-                                  alt="Bukti Transfer"
-                                  className="w-14 h-14 rounded-lg object-cover border border-emerald-200"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>Bukti transfer terunggah!</span>
-                                  </p>
-                                  <p className="text-[10px] text-emerald-700 truncate">Siap dikonfirmasi</p>
+                              <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-3 space-y-2">
+                                <div className="flex items-center gap-3">
+                                  <ImageWithFallback
+                                    src={proofImage}
+                                    alt="Bukti Transfer"
+                                    onClick={() => setPreviewProofModal(proofImage)}
+                                    className="w-16 h-16 rounded-xl object-cover border-2 border-emerald-300 shadow-xs cursor-pointer hover:opacity-90 transition-opacity bg-white shrink-0"
+                                  />
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <p className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                      <span>Foto Bukti Terunggah!</span>
+                                    </p>
+                                    <p className="text-[10px] text-emerald-700 font-medium">
+                                      Telah dikompres otomatis &amp; siap diverifikasi Admin.
+                                    </p>
+                                    <div className="flex items-center gap-2 pt-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewProofModal(proofImage)}
+                                        className="text-[10px] font-bold text-emerald-800 hover:text-emerald-900 flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded-md border border-emerald-200"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                        <span>Perbesar Foto</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => proofInputRef.current?.click()}
+                                        className="text-[10px] font-bold text-[#63534B] hover:text-black flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded-md border border-black/10"
+                                      >
+                                        <Upload className="w-3 h-3" />
+                                        <span>Ganti Foto</span>
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             ) : (
-                              <label
-                                onClick={() => proofInputRef.current?.click()}
-                                className="border-2 border-dashed border-pink-300 hover:border-pink-500 bg-white rounded-xl p-3 flex items-center justify-center gap-2 text-pink-700 font-bold text-[11px] cursor-pointer transition-colors"
-                              >
-                                <Upload className="w-4 h-4" />
-                                <span>{uploadingProof ? 'Mengompres Foto...' : '+ Upload Bukti Transfer (Galeri / Foto)'}</span>
-                                <input
-                                  ref={proofInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleProofUpload}
-                                  className="hidden"
-                                  disabled={uploadingProof}
-                                />
-                              </label>
+                              <div className="space-y-1">
+                                <label
+                                  onClick={() => proofInputRef.current?.click()}
+                                  className="border-2 border-dashed border-pink-300 hover:border-pink-500 bg-white rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all hover:bg-pink-50/40 group shadow-2xs"
+                                >
+                                  <div className="w-9 h-9 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <Upload className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-bold text-pink-700">
+                                      {uploadingProof ? 'Mengompres Foto (Maks 800px)...' : 'Unggah Foto Bukti Transfer / QRIS'}
+                                    </p>
+                                    <span className="text-[10px] text-[#A08C8C] block mt-0.5">
+                                      Ambil foto kamera atau pilih dari galeri HP (otomatis dikompres)
+                                    </span>
+                                  </div>
+                                  <input
+                                    ref={proofInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleProofUpload}
+                                    className="hidden"
+                                    disabled={uploadingProof}
+                                  />
+                                </label>
+                                <p className="text-[10px] text-rose-600 font-semibold flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3 shrink-0" />
+                                  <span>Wajib melampirkan foto struk/screenshot pembayaran sebelum klik konfirmasi.</span>
+                                </p>
+                              </div>
                             )}
                           </div>
 
@@ -643,8 +691,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                       )}
 
                       {errorMsg && (
-                        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-2.5 rounded-xl font-medium flex items-center gap-1.5">
-                          <AlertCircle className="w-4 h-4 shrink-0" />
+                        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-2.5 rounded-xl font-medium flex items-center gap-1.5 animate-in fade-in">
+                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                           <span>{errorMsg}</span>
                         </div>
                       )}
@@ -655,10 +703,22 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                           <button
                             type="submit"
                             disabled={isSubmitting || uploadingProof}
-                            className="w-full py-3.5 px-4 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-extrabold text-xs uppercase tracking-wider shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                            className={`w-full py-3.5 px-4 rounded-full font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                              !proofImage
+                                ? 'bg-[#2D2D2D] hover:bg-black text-white'
+                                : 'bg-[#2D2D2D] hover:bg-black text-white hover:scale-[1.01] active:scale-[0.99]'
+                            } disabled:opacity-50`}
                           >
                             <Check className="w-4 h-4 text-pink-300" />
-                            <span>{isSubmitting ? 'Menyimpan Pesanan...' : 'KONFIRMASI & SELESAIKAN PESANAN ♡'}</span>
+                            <span>
+                              {isSubmitting
+                                ? 'Menyimpan Pesanan...'
+                                : uploadingProof
+                                ? 'Memproses Foto...'
+                                : !proofImage
+                                ? 'Unggah Bukti & Selesaikan Pesanan ♡'
+                                : 'KONFIRMASI & SELESAIKAN PESANAN ♡'}
+                            </span>
                           </button>
                         ) : (
                           <button
@@ -681,6 +741,39 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
 
         </div>
       </div>
+
+      {/* Proof Lightbox Zoom Modal for Buyer */}
+      {previewProofModal && (
+        <div
+          className="fixed inset-0 z-60 bg-black/85 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setPreviewProofModal(null)}
+        >
+          <div className="max-w-md w-full bg-white rounded-3xl p-5 shadow-2xl space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-black/5 pb-2">
+              <span className="font-bold text-xs text-[#2D2D2D]">Foto Bukti Pembayaran Terunggah</span>
+              <button onClick={() => setPreviewProofModal(null)} className="p-1 text-gray-400 hover:text-black cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="max-h-[65vh] overflow-auto rounded-2xl bg-[#F9F7F2] p-2 flex items-center justify-center">
+              <ImageWithFallback
+                src={previewProofModal}
+                alt="Pratinjau Bukti Pembayaran"
+                className="w-full h-auto max-h-[60vh] object-contain rounded-xl"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPreviewProofModal(null)}
+                className="px-4 py-2 bg-[#2D2D2D] text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Tutup Pratinjau
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* QRIS Modal Zoom */}
       {previewQris && paymentSettings.qris_image && (

@@ -54,6 +54,7 @@ export interface Order {
   notes?: string;
   source: 'whatsapp' | 'online';
   payment_method?: 'bank_transfer' | 'qris' | 'whatsapp';
+  payment_proof?: string;
   payment_proof_url?: string;
   status: 'Pending' | 'Processing' | 'Completed' | 'Cancelled';
   created_at: string;

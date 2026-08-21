@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Package, 
   Search, 
@@ -18,19 +18,44 @@ import {
   AlertCircle,
   Volume2,
   Sparkles,
-  Send
+  Send,
+  Bell,
+  Radio
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Order } from '../../types';
-import { formatIDR, formatDate, createWhatsAppLink, playNotificationChime } from '../../lib/utils';
+import { 
+  formatIDR, 
+  formatDate, 
+  formatFullDateTime, 
+  createWhatsAppLink, 
+  playNotificationChime,
+  requestBrowserNotificationPermission,
+  sendBrowserNotification,
+  isBrowserNotificationSupported
+} from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 
 export const AdminOrdersPage: React.FC = () => {
-  const { settings, orders, updateOrderStatusLocal, deleteOrderLocal } = useStore();
+  const { settings, orders, updateOrderStatusLocal, deleteOrderLocal, isOnlineSynced } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [previewProof, setPreviewProof] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<{ id: string; msg: string } | null>(null);
+  const [testNotificationFeedback, setTestNotificationFeedback] = useState<string>('');
+
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'default';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
 
   const brandName = settings?.brand_name || 'DISSOF.ID';
 
@@ -45,7 +70,7 @@ export const AdminOrdersPage: React.FC = () => {
   };
 
   const handleDeleteOrder = async (order: Order) => {
-    if (confirm(`Hapus catatan pesanan #${order.id} dari "${order.customer_name}"? Data akan terhapus dari Database Online.`)) {
+    if (confirm(`Hapus catatan pesanan #${order.id} dari "${order.customer_name}"? Data akan terhapus dari Database Online Firestore.`)) {
       try {
         await deleteOrderLocal(order.id);
       } catch (e) {
@@ -56,6 +81,28 @@ export const AdminOrdersPage: React.FC = () => {
 
   const handleTestChime = () => {
     playNotificationChime();
+    if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
+      sendBrowserNotification('🛍️ [Uji Notifikasi] Pesanan DISSOF', {
+        body: 'Tes lonceng chime dan sistem push notifikasi browser berfungsi optimal!',
+      });
+      setTestNotificationFeedback('Suara chime berbunyi & pop-up berhasil muncul ♡');
+    } else {
+      setTestNotificationFeedback('Suara chime berbunyi ♡');
+    }
+    setTimeout(() => setTestNotificationFeedback(''), 3000);
+  };
+
+  const handleRequestPermission = async () => {
+    const perm = await requestBrowserNotificationPermission();
+    setNotificationPermission(perm);
+    if (perm === 'granted') {
+      playNotificationChime();
+      sendBrowserNotification('🎉 Notifikasi Pesanan DISSOF Aktif!', {
+        body: 'Sistem siap memberitahu setiap pesanan baru masuk secara real-time.',
+      });
+      setTestNotificationFeedback('Izin notifikasi browser berhasil diaktifkan ♡');
+      setTimeout(() => setTestNotificationFeedback(''), 3000);
+    }
   };
 
   const filteredOrders = useMemo(() => {
@@ -83,7 +130,7 @@ export const AdminOrdersPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-black/5 pb-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-playfair text-2xl sm:text-3xl font-bold text-[#2D2D2D]">
               Daftar Pesanan Masuk ♡
             </h1>
@@ -92,23 +139,48 @@ export const AdminOrdersPage: React.FC = () => {
                 {pendingCount} Pesanan Baru
               </span>
             )}
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+              <span>Real-Time Firestore Sync</span>
+            </span>
           </div>
           <p className="text-xs text-[#A08C8C] mt-0.5 font-medium">
-            Kelola pesanan Transfer Bank / QRIS & WhatsApp yang masuk. Data tersimpan 100% di LocalStorage.
+            Kelola pesanan Transfer Bank / QRIS & WhatsApp yang masuk secara real-time antar perangkat.
           </p>
         </div>
 
-        {/* Audio Chime Test Button */}
-        <button
-          type="button"
-          onClick={handleTestChime}
-          className="px-3.5 py-2 rounded-2xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
-          title="Tes Suara Notifikasi Pesanan Masuk"
-        >
-          <Volume2 className="w-3.5 h-3.5 text-pink-500" />
-          <span>Tes Suara Notifikasi (Chime)</span>
-        </button>
+        {/* Audio Chime & Push Notification Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {notificationPermission !== 'granted' && (
+            <button
+              type="button"
+              onClick={handleRequestPermission}
+              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer"
+              title="Aktifkan notifikasi browser pop-up"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Aktifkan Notifikasi Pop-up</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleTestChime}
+            className="px-3.5 py-2 rounded-2xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Tes Suara Notifikasi Pesanan Masuk"
+          >
+            <Volume2 className="w-3.5 h-3.5 text-pink-500" />
+            <span>Tes Suara &amp; Pop-up</span>
+          </button>
+        </div>
       </div>
+
+      {testNotificationFeedback && (
+        <div className="bg-pink-50 border border-pink-200 rounded-2xl px-4 py-2 text-xs font-bold text-pink-700 flex items-center gap-2 animate-in fade-in duration-200">
+          <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+          <span>{testNotificationFeedback}</span>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="bg-white rounded-2xl p-4 border border-black/5 shadow-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -311,27 +383,30 @@ export const AdminOrdersPage: React.FC = () => {
                   </div>
 
                   {/* Bukti Transfer Box */}
-                  {ord.payment_proof_url ? (
+                  {(ord.payment_proof || ord.payment_proof_url) ? (
                     <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2">
                       <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Bukti Transfer Terlampir</span>
+                        <span>Bukti Pembayaran Terlampir</span>
                       </span>
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-3">
                         <ImageWithFallback
-                          src={ord.payment_proof_url}
+                          src={ord.payment_proof || ord.payment_proof_url || ''}
                           alt="Bukti Transfer"
-                          onClick={() => setPreviewProof(ord.payment_proof_url || null)}
-                          className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-300 cursor-pointer hover:opacity-80 transition-opacity bg-white shadow-2xs"
+                          onClick={() => setPreviewProof(ord.payment_proof || ord.payment_proof_url || null)}
+                          className="w-16 h-16 rounded-xl object-cover border-2 border-emerald-300 cursor-pointer hover:opacity-80 transition-opacity bg-white shadow-2xs shrink-0"
                         />
-                        <button
-                          type="button"
-                          onClick={() => setPreviewProof(ord.payment_proof_url || null)}
-                          className="text-[11px] text-emerald-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Periksa Struk →</span>
-                        </button>
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewProof(ord.payment_proof || ord.payment_proof_url || null)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shadow-2xs transition-transform active:scale-95"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Periksa Struk</span>
+                          </button>
+                          <p className="text-[10px] text-emerald-700 font-medium">Klik untuk zoom foto</p>
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -352,26 +427,57 @@ export const AdminOrdersPage: React.FC = () => {
       {/* Proof of Payment Zoom Modal */}
       {previewProof && (
         <div
-          className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-60 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setPreviewProof(null)}
         >
-          <div className="max-w-xl max-h-[90vh] bg-white rounded-3xl overflow-hidden p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between pb-2 border-b border-black/5">
-              <span className="font-bold text-xs text-[#2D2D2D]">Foto Bukti Pembayaran / Struk Transfer Customer</span>
+          <div className="max-w-2xl w-full bg-white rounded-3xl overflow-hidden p-5 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-black/5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                  ✓
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-[#2D2D2D]">Foto Bukti Pembayaran / Struk Transfer</h4>
+                  <p className="text-[11px] text-[#A08C8C]">Verifikasi keaslian transfer bank / QRIS customer</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setPreviewProof(null)}
-                className="p-1 rounded-full text-gray-400 hover:text-black cursor-pointer hover:bg-black/5"
+                className="p-1.5 rounded-full text-gray-400 hover:text-black cursor-pointer hover:bg-black/5 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex items-center justify-center bg-[#F9F7F2] rounded-2xl p-2 max-h-[75vh] overflow-auto">
+
+            <div className="flex items-center justify-center bg-[#F9F7F2] rounded-2xl p-3 max-h-[70vh] overflow-auto border border-black/5">
               <ImageWithFallback
                 src={previewProof}
                 alt="Zoom Bukti Transfer"
-                className="w-full h-auto max-h-[70vh] object-contain rounded-xl"
+                className="w-full h-auto max-h-[65vh] object-contain rounded-xl shadow-xs"
               />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-gray-500">Pastikan nominal &amp; nomor referensi sesuai</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewProof}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-pink-50 text-pink-700 hover:bg-pink-100 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka Tab Baru</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewProof(null)}
+                  className="px-4 py-2 rounded-xl bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         </div>

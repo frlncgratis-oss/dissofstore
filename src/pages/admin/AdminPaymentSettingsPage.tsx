@@ -14,12 +14,14 @@ import {
   Eye, 
   Copy, 
   Sparkles,
-  Info
+  Info,
+  Crop
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { PaymentSettings } from '../../types';
 import { compressImageFile } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
+import { ImageCropModal } from '../../components/common/ImageCropModal';
 
 const BANK_PRESETS = [
   'BCA (Bank Central Asia)',
@@ -54,26 +56,38 @@ export const AdminPaymentSettingsPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // QRIS Crop Modal state
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setUploadingImage(true);
-    setErrorMsg('');
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        setCropImageSrc(reader.result as string);
+        setCropModalOpen(true);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = '';
+  };
 
-    try {
-      const file = files[0];
-      const compressedBase64 = await compressImageFile(file, 800, 0.8);
-      setQrisImage(compressedBase64);
-    } catch (err: any) {
-      console.warn('QRIS image compress warning:', err);
-      setErrorMsg(err.message || 'Gagal memproses gambar QRIS. Gunakan format JPG/PNG.');
-    } finally {
-      setUploadingImage(false);
-      if (e.target) e.target.value = '';
-    }
+  const handleCropComplete = (croppedBase64: string) => {
+    setQrisImage(croppedBase64);
+    setCropModalOpen(false);
+    setCropImageSrc(null);
+  };
+
+  const handleOpenCropExisting = () => {
+    if (!qrisImage) return;
+    setCropImageSrc(qrisImage);
+    setCropModalOpen(true);
   };
 
   const handleRemoveQrisImage = () => {
@@ -409,12 +423,24 @@ export const AdminPaymentSettingsPage: React.FC = () => {
 
             {/* QRIS Graphic Preview */}
             {qrisImage && (
-              <div className="bg-[#FAF7F2] p-4 rounded-2xl border border-pink-100 text-center space-y-2">
-                <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-pink-700">
-                  <QrCode className="w-4 h-4" />
-                  <span>{qrisLabel || 'Scan QRIS untuk Bayar'}</span>
+              <div className="bg-[#FAF7F2] p-4 rounded-2xl border border-pink-100 text-center space-y-2 relative group">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-pink-700">
+                    <QrCode className="w-4 h-4" />
+                    <span>{qrisLabel || 'Scan QRIS untuk Bayar'}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenCropExisting}
+                    className="px-2.5 py-1 rounded-xl bg-pink-100 text-pink-700 hover:bg-pink-200 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer border border-pink-200"
+                    title="Crop QRIS"
+                  >
+                    <Crop className="w-3 h-3 text-pink-600" />
+                    <span>Crop Barcode</span>
+                  </button>
                 </div>
-                <div className="w-44 h-44 mx-auto bg-white p-2 rounded-2xl border border-pink-200 shadow-xs flex items-center justify-center">
+                <div className="w-44 h-44 mx-auto bg-white p-2 rounded-2xl border border-pink-200 shadow-xs flex items-center justify-center overflow-hidden">
                   <ImageWithFallback
                     src={qrisImage}
                     alt="QRIS Barcode"
@@ -440,6 +466,21 @@ export const AdminPaymentSettingsPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* QRIS Image Crop Modal */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={cropImageSrc}
+        title="Crop & Rapikan Gambar Barcode QRIS ♡"
+        description="Potong bagian barcode QRIS agar pas dan mudah di-scan oleh pembeli."
+        defaultAspect={1 / 1}
+        cropOptions={{ maxDimension: 800, quality: 0.85 }}
+        onCropComplete={handleCropComplete}
+        onClose={() => {
+          setCropModalOpen(false);
+          setCropImageSrc(null);
+        }}
+      />
 
     </div>
   );

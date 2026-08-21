@@ -14,12 +14,14 @@ import {
   ShoppingBag, 
   Sparkles,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Crop
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Category } from '../../types';
 import { compressImageFile } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
+import { ImageCropModal } from '../../components/common/ImageCropModal';
 
 const PRESET_AESTHETIC_IMAGES = [
   { label: 'Charm Bracelets', url: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80', icon: '✨' },
@@ -55,6 +57,10 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
   const [toastMessage, setToastMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Category Crop Modal state
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,22 +102,32 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setIsUploading(true);
-    setErrorMessage('');
-    try {
-      const file = files[0];
-      const base64 = await compressImageFile(file, 600, 0.75);
-      setImage(base64);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Gagal memproses gambar. Gunakan gambar berukuran lebih kecil.');
-    } finally {
-      setIsUploading(false);
-      if (e.target) e.target.value = '';
-    }
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        setCropImageSrc(reader.result as string);
+        setCropModalOpen(true);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = '';
+  };
+
+  const handleCropComplete = (croppedBase64: string) => {
+    setImage(croppedBase64);
+    setCropModalOpen(false);
+    setCropImageSrc(null);
+  };
+
+  const handleOpenCropExisting = () => {
+    if (!image) return;
+    setCropImageSrc(image);
+    setCropModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -452,15 +468,29 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
                   </div>
 
                   <div className="flex-1 space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className="px-3 py-1.5 bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold rounded-xl text-[11px] flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <Upload className="w-3 h-3" />
-                      <span>{isUploading ? 'Mengompres Foto...' : 'Upload dari Galeri / Kamera'}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="px-3 py-1.5 bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold rounded-xl text-[11px] flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>{isUploading ? 'Memproses...' : 'Upload Foto'}</span>
+                      </button>
+
+                      {image && (
+                        <button
+                          type="button"
+                          onClick={handleOpenCropExisting}
+                          className="px-2.5 py-1.5 bg-pink-100/90 hover:bg-pink-200 text-pink-700 font-bold rounded-xl text-[11px] flex items-center gap-1 cursor-pointer transition-colors border border-pink-200"
+                          title="Crop Foto Kategori"
+                        >
+                          <Crop className="w-3 h-3 text-pink-600" />
+                          <span>Crop ♡</span>
+                        </button>
+                      )}
+                    </div>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -529,6 +559,21 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
           </div>
         </div>
       )}
+
+      {/* Category Image Crop Modal */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={cropImageSrc}
+        title="Crop & Sesuaikan Foto Kategori ♡"
+        description="Potong foto kategori dengan rasio 1:1 atau rasio lainnya agar serasi di katalog."
+        defaultAspect={1 / 1}
+        cropOptions={{ maxDimension: 600, quality: 0.85 }}
+        onCropComplete={handleCropComplete}
+        onClose={() => {
+          setCropModalOpen(false);
+          setCropImageSrc(null);
+        }}
+      />
 
     </div>
   );

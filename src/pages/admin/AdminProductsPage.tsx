@@ -16,12 +16,14 @@ import {
   ArrowRight,
   RefreshCw,
   Camera,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Crop
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Product } from '../../types';
 import { formatIDR, compressImageFile } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
+import { ImageCropModal } from '../../components/common/ImageCropModal';
 
 export const AdminProductsPage: React.FC = () => {
   const { products, categories, saveProductLocal, deleteProductLocal, saveCategoryLocal, refreshData } = useStore();
@@ -62,10 +64,63 @@ export const AdminProductsPage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cropUploadInputRef = useRef<HTMLInputElement>(null);
+
+  // Crop Modal state
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [cropTargetIndex, setCropTargetIndex] = useState<number | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastMsg({ type, message });
     setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const handleOpenCropForIndex = (index: number, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const targetSrc = images[index];
+    if (!targetSrc) return;
+    setCropImageSrc(targetSrc);
+    setCropTargetIndex(index);
+    setCropModalOpen(true);
+  };
+
+  const handleCropComplete = (croppedBase64: string) => {
+    if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
+      setImages((prev) => {
+        const next = [...prev];
+        next[cropTargetIndex] = croppedBase64;
+        return next;
+      });
+      showToast(`Foto #${cropTargetIndex + 1} berhasil di-crop & disesuaikan!`);
+    } else {
+      setImages((prev) => {
+        const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
+        return [...filtered, croppedBase64];
+      });
+      showToast('Foto baru berhasil di-crop & ditambahkan ke produk!');
+    }
+    setCropModalOpen(false);
+    setCropImageSrc(null);
+    setCropTargetIndex(null);
+  };
+
+  const handleUploadWithCrop = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        setCropImageSrc(reader.result as string);
+        setCropTargetIndex(null);
+        setCropModalOpen(true);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = '';
   };
 
   const openAddModal = () => {
@@ -662,15 +717,27 @@ export const AdminProductsPage: React.FC = () => {
                           </span>
                         )}
 
-                        {/* Direct Pink Delete 'X' Button - Always clickable & visible */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleRemoveImage(idx, e)}
-                          className="w-6 h-6 rounded-full bg-[#FF9AA2] hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
-                          title="Hapus foto dari galeri"
-                        >
-                          <X className="w-3.5 h-3.5 stroke-[3]" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {/* Crop button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenCropForIndex(idx, e)}
+                            className="w-6 h-6 rounded-full bg-white/95 hover:bg-pink-50 text-[#2D2D2D] hover:text-pink-600 flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto border border-black/5"
+                            title="Crop & Sesuaikan Foto"
+                          >
+                            <Crop className="w-3.5 h-3.5 text-pink-600" />
+                          </button>
+
+                          {/* Direct Pink Delete 'X' Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveImage(idx, e)}
+                            className="w-6 h-6 rounded-full bg-[#FF9AA2] hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
+                            title="Hapus foto dari galeri"
+                          >
+                            <X className="w-3.5 h-3.5 stroke-[3]" />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Bottom Action Bar inside Thumbnail */}
@@ -749,7 +816,18 @@ export const AdminProductsPage: React.FC = () => {
 
                 {/* Upload Action Helpers */}
                 <div className="flex flex-wrap gap-2 pt-1 items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => cropUploadInputRef.current?.click()}
+                      disabled={uploadingImage}
+                      className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      title="Pilih foto dan langsung potong (crop) sesuai rasio terbaik"
+                    >
+                      <Crop className="w-3.5 h-3.5" />
+                      <span>Upload & Crop Foto ♡</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
@@ -757,7 +835,7 @@ export const AdminProductsPage: React.FC = () => {
                       className="px-3 py-1.5 rounded-xl bg-white border border-[#FFD1DC] text-[#FF9AA2] hover:bg-[#FFEFF1] font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingImage ? 'Sedang Memproses...' : 'Pilih File dari HP/Laptop'}</span>
+                      <span>{uploadingImage ? 'Sedang Memproses...' : 'Pilih File (Banyak)'}</span>
                     </button>
 
                     <button
@@ -771,6 +849,14 @@ export const AdminProductsPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
+
+                <input
+                  ref={cropUploadInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUploadWithCrop}
+                  className="hidden"
+                />
 
                 {/* Direct image URL adder */}
                 <div className="flex gap-2 pt-2 border-t border-black/5">
@@ -1027,6 +1113,22 @@ export const AdminProductsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Image Crop Modal */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={cropImageSrc}
+        title="Crop & Sesuaikan Foto Produk ♡"
+        description="Pilih rasio 1:1 Persegi (Rekomendasi Foto Produk) atau rasio lainnya, atur zoom dan rotasi agar manik-manik terlihat manis."
+        defaultAspect={1 / 1}
+        cropOptions={{ maxDimension: 900, quality: 0.85 }}
+        onCropComplete={handleCropComplete}
+        onClose={() => {
+          setCropModalOpen(false);
+          setCropImageSrc(null);
+          setCropTargetIndex(null);
+        }}
+      />
 
     </div>
   );

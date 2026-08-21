@@ -11,11 +11,13 @@ import {
   Layers, 
   ExternalLink,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Crop
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { compressImageFile } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
+import { ImageCropModal } from '../../components/common/ImageCropModal';
 
 const PRESET_LOGOS = [
   {
@@ -123,6 +125,12 @@ export const AdminBrandingPage: React.FC = () => {
   const [isProcessingBanner, setIsProcessingBanner] = useState(false);
   const [isProcessingBg, setIsProcessingBg] = useState(false);
 
+  // Crop Modal state
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [cropTargetType, setCropTargetType] = useState<'logo' | 'banner' | 'background' | null>(null);
+  const [cropAspect, setCropAspect] = useState<number | undefined>(1 / 1);
+
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const showToast = (type: 'success' | 'error', text: string) => {
@@ -130,24 +138,67 @@ export const AdminBrandingPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const openCropForLogo = (imageSrc: string) => {
+    setCropImageSrc(imageSrc);
+    setCropTargetType('logo');
+    setCropAspect(1 / 1);
+    setCropModalOpen(true);
+  };
+
+  const openCropForBanner = (imageSrc: string) => {
+    setCropImageSrc(imageSrc);
+    setCropTargetType('banner');
+    setCropAspect(4 / 5);
+    setCropModalOpen(true);
+  };
+
+  const openCropForBackground = (imageSrc: string) => {
+    setCropImageSrc(imageSrc);
+    setCropTargetType('background');
+    setCropAspect(16 / 9);
+    setCropModalOpen(true);
+  };
+
+  const handleCropComplete = async (croppedBase64: string) => {
+    try {
+      if (cropTargetType === 'logo') {
+        setIsProcessingLogo(true);
+        await saveStoreLogo(croppedBase64);
+        showToast('success', 'Logo Header berhasil di-crop & disimpan!');
+      } else if (cropTargetType === 'banner') {
+        setIsProcessingBanner(true);
+        await saveHeroBanner(croppedBase64);
+        showToast('success', 'Banner Hero Card berhasil di-crop & disimpan!');
+      } else if (cropTargetType === 'background') {
+        setIsProcessingBg(true);
+        await saveStoreBackground({ type: 'image', value: croppedBase64, mode: bgMode });
+        showToast('success', 'Gambar Background berhasil di-crop & diterapkan!');
+      }
+    } catch (err: any) {
+      showToast('error', err.message || 'Gagal menyimpan hasil crop.');
+    } finally {
+      setIsProcessingLogo(false);
+      setIsProcessingBanner(false);
+      setIsProcessingBg(false);
+      setCropModalOpen(false);
+      setCropImageSrc(null);
+      setCropTargetType(null);
+    }
+  };
+
   // --- LOGO HANDLERS ---
   const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsProcessingLogo(true);
-    try {
-      // Compress image to optimized base64
-      const compressed = await compressImageFile(file, 600, 0.85, true);
-      await saveStoreLogo(compressed);
-      showToast('success', 'Logo Header berhasil diunggah dan disimpan ke LocalStorage (key: store_logo)!');
-      setLogoInputUrl('');
-    } catch (err: any) {
-      showToast('error', err.message || 'Gagal memproses gambar logo.');
-    } finally {
-      setIsProcessingLogo(false);
-      if (logoFileInputRef.current) logoFileInputRef.current.value = '';
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        openCropForLogo(reader.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (logoFileInputRef.current) logoFileInputRef.current.value = '';
   };
 
   const handleApplyLogoUrl = async () => {
@@ -176,18 +227,14 @@ export const AdminBrandingPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsProcessingBanner(true);
-    try {
-      const compressed = await compressImageFile(file, 1000, 0.82);
-      await saveHeroBanner(compressed);
-      showToast('success', 'Gambar Hero/Banner berhasil diunggah dan disimpan ke LocalStorage (key: store_hero_banner)!');
-      setBannerInputUrl('');
-    } catch (err: any) {
-      showToast('error', err.message || 'Gagal memproses gambar banner.');
-    } finally {
-      setIsProcessingBanner(false);
-      if (bannerFileInputRef.current) bannerFileInputRef.current.value = '';
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        openCropForBanner(reader.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (bannerFileInputRef.current) bannerFileInputRef.current.value = '';
   };
 
   const handleApplyBannerUrl = async () => {
@@ -232,18 +279,14 @@ export const AdminBrandingPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsProcessingBg(true);
-    try {
-      const compressed = await compressImageFile(file, 1200, 0.85);
-      await saveStoreBackground({ type: 'image', value: compressed, mode: bgMode });
-      showToast('success', 'Gambar/Pattern latar belakang berhasil diunggah dan disimpan ke LocalStorage (key: store_background)!');
-      setBgInputUrl('');
-    } catch (err: any) {
-      showToast('error', err.message || 'Gagal memproses gambar latar belakang.');
-    } finally {
-      setIsProcessingBg(false);
-      if (bgFileInputRef.current) bgFileInputRef.current.value = '';
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        openCropForBackground(reader.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (bgFileInputRef.current) bgFileInputRef.current.value = '';
   };
 
   const handleApplyBgUrl = async () => {
@@ -394,7 +437,7 @@ export const AdminBrandingPage: React.FC = () => {
               className="hidden"
               onChange={handleLogoFileUpload}
             />
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => logoFileInputRef.current?.click()}
@@ -402,20 +445,33 @@ export const AdminBrandingPage: React.FC = () => {
                 className="flex-1 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Upload className="w-4 h-4" />
-                <span>{storeLogo ? 'Ubah Logo (Pilih dari HP / Laptop)' : 'Unggah Logo Header Baru'}</span>
+                <span>{storeLogo ? 'Ubah Logo (Pilih File)' : 'Unggah Logo Header Baru'}</span>
               </button>
 
               {storeLogo && (
-                <button
-                  type="button"
-                  onClick={handleRemoveLogo}
-                  disabled={isProcessingLogo}
-                  className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                  title="Hapus Logo Header"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span>Hapus Logo</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openCropForLogo(storeLogo)}
+                    disabled={isProcessingLogo}
+                    className="px-3.5 py-3 rounded-2xl bg-pink-100/90 hover:bg-pink-200 text-pink-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs border border-pink-200"
+                    title="Crop & Sesuaikan Posisi Logo"
+                  >
+                    <Crop className="w-4 h-4 text-pink-600" />
+                    <span>Crop Logo ♡</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    disabled={isProcessingLogo}
+                    className="px-3.5 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Hapus Logo Header"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-600" />
+                    <span>Hapus</span>
+                  </button>
+                </>
               )}
             </div>
             <p className="text-[10px] text-[#8C7D75]">
@@ -569,27 +625,40 @@ export const AdminBrandingPage: React.FC = () => {
               onChange={handleBannerFileUpload}
             />
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => bannerFileInputRef.current?.click()}
                 disabled={isProcessingBanner}
-                className="flex-1 min-w-[200px] px-5 py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white text-xs font-bold shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="flex-1 min-w-[180px] px-5 py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white text-xs font-bold shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Upload className="w-4 h-4" />
-                <span>{storeHeroBanner ? 'Ubah Banner (Upload Gambar Baru)' : 'Unggah Gambar Banner Utama'}</span>
+                <span>{storeHeroBanner ? 'Ubah Banner (Upload)' : 'Unggah Gambar Banner Utama'}</span>
               </button>
 
               {storeHeroBanner && (
-                <button
-                  type="button"
-                  onClick={handleRemoveBanner}
-                  disabled={isProcessingBanner}
-                  className="px-4 py-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span>Hapus Banner</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openCropForBanner(storeHeroBanner)}
+                    disabled={isProcessingBanner}
+                    className="px-4 py-3.5 rounded-2xl bg-pink-100/90 hover:bg-pink-200 text-pink-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs border border-pink-200"
+                    title="Crop & Sesuaikan Posisi Banner"
+                  >
+                    <Crop className="w-4 h-4 text-pink-600" />
+                    <span>Crop Banner ♡</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveBanner}
+                    disabled={isProcessingBanner}
+                    className="px-4 py-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-600" />
+                    <span>Hapus</span>
+                  </button>
+                </>
               )}
             </div>
 
@@ -949,6 +1018,38 @@ export const AdminBrandingPage: React.FC = () => {
         </div>
 
       </section>
+
+      {/* Image Crop Modal for Branding */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={cropImageSrc}
+        title={
+          cropTargetType === 'logo' 
+            ? 'Crop & Sesuaikan Logo Header ♡' 
+            : cropTargetType === 'banner' 
+            ? 'Crop & Sesuaikan Banner Hero Card ♡' 
+            : 'Crop & Sesuaikan Background Pattern ♡'
+        }
+        description={
+          cropTargetType === 'logo'
+            ? 'Gunakan rasio 1:1 atau Bebas untuk mengatur logo agar pas di header navbar.'
+            : cropTargetType === 'banner'
+            ? 'Rasio 3:4 atau 4:3 sangat pas untuk card visual hero di halaman utama.'
+            : 'Sesuaikan potongan gambar pola latar belakang agar estetik di seluruh layar.'
+        }
+        defaultAspect={cropAspect}
+        cropOptions={{
+          maxDimension: cropTargetType === 'background' ? 1200 : 900,
+          quality: 0.85,
+          preserveAlpha: cropTargetType === 'logo', // Preserve transparency for logo PNG
+        }}
+        onCropComplete={handleCropComplete}
+        onClose={() => {
+          setCropModalOpen(false);
+          setCropImageSrc(null);
+          setCropTargetType(null);
+        }}
+      />
 
     </div>
   );

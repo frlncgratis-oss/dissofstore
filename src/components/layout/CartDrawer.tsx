@@ -82,25 +82,71 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     setTimeout(() => setCopiedBank(false), 2000);
   };
 
-  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const file = files[0];
     setUploadingProof(true);
     setErrorMsg('');
-    try {
-      const file = files[0];
-      // Automatic compression (max width/height 800px, JPEG 0.60, target < 150KB)
-      const base64 = await compressImageFile(file, 800, 0.6);
-      setProofImage(base64);
-      setErrorMsg(''); // Clear error immediately
-    } catch (err: any) {
-      console.warn('Error compressing transfer proof:', err);
-      setErrorMsg('Gagal memproses foto bukti transfer. Silakan pilih foto lain atau coba lagi.');
-    } finally {
+
+    const reader = new FileReader();
+    reader.onload = (event: ProgressEvent<FileReader>) => {
+      const result = event.target?.result as string;
+      if (!result) {
+        setUploadingProof(false);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+          if (width > height && width > maxDim) {
+            height *= maxDim / width;
+            width = maxDim;
+          } else if (height > maxDim) {
+            width *= maxDim / height;
+            height = maxDim;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+            setProofImage(compressedBase64);
+          } else {
+            setProofImage(result);
+          }
+        } catch (err) {
+          console.warn('Canvas compression error, using original data URL:', err);
+          setProofImage(result);
+        } finally {
+          setErrorMsg('');
+          setUploadingProof(false);
+        }
+      };
+
+      img.onerror = () => {
+        setProofImage(result); // Fallback jika kompresi gagal
+        setErrorMsg('');
+        setUploadingProof(false);
+      };
+
+      img.src = result;
+    };
+
+    reader.onerror = () => {
+      setErrorMsg('Gagal membaca file gambar. Silakan coba pilih foto lain.');
       setUploadingProof(false);
-      if (e.target) e.target.value = '';
-    }
+    };
+
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = '';
   };
 
   const handleCheckout = async (e: React.FormEvent) => {
@@ -594,6 +640,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
 
                           {/* Proof of Transfer Upload */}
                           <div className="space-y-2 pt-1 border-t border-pink-100/80 mt-2">
+                            <input
+                              type="file"
+                              id="qris-proof-input"
+                              accept="image/*"
+                              style={{ display: 'none' }}
+                              onChange={handleProofChange}
+                              disabled={uploadingProof}
+                            />
+
                             <div className="flex items-center justify-between">
                               <label className="font-bold text-[11px] text-[#2D2D2D] flex items-center gap-1.5">
                                 <span>Bukti Transfer / QRIS</span>
@@ -604,7 +659,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                               {proofImage && (
                                 <button
                                   type="button"
-                                  onClick={() => setProofImage('')}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setProofImage('');
+                                  }}
                                   className="text-[10px] text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -614,46 +673,49 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                             </div>
 
                             {proofImage ? (
-                              <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-3 space-y-2">
+                              <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/80 p-3.5 space-y-2.5">
                                 <div className="flex items-center gap-3">
-                                  <ImageWithFallback
-                                    src={proofImage}
-                                    alt="Bukti Transfer"
-                                    onClick={() => setPreviewProofModal(proofImage)}
-                                    className="w-16 h-16 rounded-xl object-cover border-2 border-emerald-300 shadow-xs cursor-pointer hover:opacity-90 transition-opacity bg-white shrink-0"
-                                  />
-                                  <div className="flex-1 min-w-0 space-y-1">
+                                  <div className="relative group shrink-0">
+                                    <ImageWithFallback
+                                      src={proofImage}
+                                      alt="Bukti Transfer"
+                                      onClick={() => setPreviewProofModal(proofImage)}
+                                      className="w-18 h-18 rounded-xl object-cover border-2 border-emerald-300 shadow-xs cursor-pointer hover:opacity-90 transition-opacity bg-white"
+                                    />
+                                    <div 
+                                      onClick={() => setPreviewProofModal(proofImage)}
+                                      className="absolute inset-0 bg-black/30 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white cursor-pointer transition-opacity"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                    </div>
+                                  </div>
+
+                                  <div className="flex-1 min-w-0 space-y-1.5">
                                     <p className="text-xs font-bold text-emerald-900 flex items-center gap-1">
                                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                      <span>Foto Bukti Terunggah!</span>
+                                      <span>Foto Bukti Berhasil Dimuat!</span>
                                     </p>
-                                    <p className="text-[10px] text-emerald-700 font-medium">
-                                      Telah dikompres otomatis &amp; siap diverifikasi Admin.
+                                    <p className="text-[10px] text-emerald-700 font-medium leading-tight">
+                                      Telah dikompresi otomatis &amp; siap diverifikasi admin.
                                     </p>
-                                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+
+                                    <div className="flex flex-wrap items-center gap-2 pt-1">
                                       <button
                                         type="button"
                                         onClick={() => setPreviewProofModal(proofImage)}
                                         className="text-[10px] font-bold text-emerald-800 hover:text-emerald-900 flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-emerald-200 shadow-2xs"
                                       >
                                         <Eye className="w-3 h-3" />
-                                        <span>Perbesar Foto</span>
+                                        <span>Perbesar</span>
                                       </button>
 
                                       <label
-                                        htmlFor="payment-proof-replace-input"
+                                        htmlFor="qris-proof-input"
+                                        style={{ cursor: 'pointer' }}
                                         className="text-[10px] font-bold text-[#63534B] hover:text-black flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-black/10 shadow-2xs"
                                       >
                                         <Upload className="w-3 h-3 text-pink-500" />
                                         <span>{uploadingProof ? 'Mengompres...' : 'Ganti Foto'}</span>
-                                        <input
-                                          id="payment-proof-replace-input"
-                                          type="file"
-                                          accept="image/*"
-                                          onChange={handleProofUpload}
-                                          className="hidden"
-                                          disabled={uploadingProof}
-                                        />
                                       </label>
                                     </div>
                                   </div>
@@ -662,48 +724,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                             ) : (
                               <div className="space-y-2">
                                 <label
-                                  htmlFor="payment-proof-main-input"
-                                  className="border-2 border-dashed border-pink-300 hover:border-pink-500 bg-white rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-all hover:bg-pink-50/40 group shadow-2xs block"
+                                  htmlFor="qris-proof-input"
+                                  style={{ cursor: 'pointer', display: 'block' }}
+                                  className="border-2 border-dashed border-pink-300 hover:border-pink-500 bg-white rounded-2xl p-4.5 text-center transition-all hover:bg-pink-50/40 group shadow-2xs"
                                 >
-                                  <div className="w-9 h-9 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform mx-auto">
-                                    <Upload className="w-4 h-4" />
+                                  <div className="w-10 h-10 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform mx-auto mb-2">
+                                    <Upload className="w-5 h-5" />
                                   </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-pink-700">
-                                      {uploadingProof ? 'Mengompres Foto (Maks 800px)...' : 'Klik untuk Pilih dari Galeri HP / PC'}
-                                    </p>
-                                    <span className="text-[10px] text-[#A08C8C] block mt-0.5">
-                                      Ambil struk/screenshot transfer (otomatis dikompres &lt; 150 KB)
-                                    </span>
-                                  </div>
-                                  <input
-                                    id="payment-proof-main-input"
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleProofUpload}
-                                    className="hidden"
-                                    disabled={uploadingProof}
-                                  />
+                                  <p className="text-xs font-bold text-pink-700">
+                                    {uploadingProof ? 'Mengompres Foto (Maks 800px)...' : 'Klik untuk Pilih dari Galeri HP / Kamera'}
+                                  </p>
+                                  <span className="text-[10px] text-[#A08C8C] block mt-1">
+                                    Ambil struk ATM, scan QRIS, atau m-Banking (otomatis dikompres &lt; 150 KB)
+                                  </span>
                                 </label>
-
-                                <div className="flex items-center justify-center gap-2">
-                                  <label
-                                    htmlFor="payment-proof-camera-input"
-                                    className="px-3.5 py-1.5 rounded-xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-[11px] flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                                  >
-                                    <Camera className="w-3.5 h-3.5 text-pink-500" />
-                                    <span>Ambil dari Kamera HP Langsung</span>
-                                    <input
-                                      id="payment-proof-camera-input"
-                                      type="file"
-                                      accept="image/*"
-                                      capture="environment"
-                                      onChange={handleProofUpload}
-                                      className="hidden"
-                                      disabled={uploadingProof}
-                                    />
-                                  </label>
-                                </div>
 
                                 <p className="text-[10px] text-rose-600 font-semibold flex items-center gap-1">
                                   <AlertCircle className="w-3 h-3 shrink-0" />
@@ -733,19 +767,21 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                         {paymentMethod === 'bank_transfer' ? (
                           <button
                             type="submit"
-                            disabled={isSubmitting || uploadingProof}
-                            className={`w-full py-3.5 px-4 rounded-full font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                            disabled={isSubmitting || uploadingProof || !proofImage}
+                            className={`w-full py-3.5 px-4 rounded-full font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 ${
                               !proofImage
-                                ? 'bg-pink-600 hover:bg-pink-700 text-white shadow-pink-200'
-                                : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white shadow-lg shadow-pink-200 hover:scale-[1.01] active:scale-[0.99]'
-                            } disabled:opacity-50`}
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
+                                : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 hover:from-pink-700 hover:to-rose-700 text-white shadow-lg shadow-pink-200 hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
+                            }`}
                           >
-                            <Check className="w-4 h-4 text-white" />
+                            <Check className={`w-4 h-4 ${!proofImage ? 'text-gray-400' : 'text-white'}`} />
                             <span>
                               {isSubmitting
                                 ? 'Menyimpan Pesanan...'
                                 : uploadingProof
                                 ? 'Memproses Foto...'
+                                : !proofImage
+                                ? 'Unggah Bukti Foto Terlebih Dahulu'
                                 : 'UNGGAH BUKTI & SELESAIKAN PESANAN ♡'}
                             </span>
                           </button>

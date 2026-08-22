@@ -53,7 +53,10 @@ import {
   isQuotaExceededError,
   safeString,
   safeTrim,
-  safeToLowerCase
+  safeToLowerCase,
+  DISSOF_BRANDING_BACKUP_KEY,
+  saveBrandingBackupLocal,
+  getBrandingBackupLocal
 } from '../lib/utils';
 import confetti from 'canvas-confetti';
 
@@ -377,19 +380,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Settings State
   const [settings, setSettings] = useState<SiteSettings>(() => {
     try {
+      const backup = getBrandingBackupLocal();
       const storedWA = localStorage.getItem(WHATSAPP_STORAGE_KEY);
       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      
+      let parsedSettings: any = {};
       if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          ...DEFAULT_SETTINGS,
-          ...parsed,
-          whatsapp_number: storedWA || parsed.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number,
-        };
+        try {
+          parsedSettings = JSON.parse(saved);
+        } catch {}
       }
-      if (storedWA) {
-        return { ...DEFAULT_SETTINGS, whatsapp_number: storedWA };
-      }
+
+      const mergedData = {
+        ...DEFAULT_SETTINGS,
+        ...parsedSettings,
+        ...(backup || {}),
+        logo_url: backup?.logo_url ?? backup?.logoUrl ?? parsedSettings?.logo_url ?? getStoredLogo() ?? DEFAULT_SETTINGS.logo_url,
+        hero_banner_url: backup?.hero_banner_url ?? backup?.heroBanner ?? parsedSettings?.hero_banner_url ?? getStoredHeroBanner() ?? DEFAULT_SETTINGS.hero_banner_url,
+        popup_banner_image: backup?.popup_banner_image ?? backup?.eventBanner ?? parsedSettings?.popup_banner_image,
+        favicon_url: backup?.favicon_url ?? backup?.faviconUrl ?? parsedSettings?.favicon_url,
+        whatsapp_number: storedWA || backup?.whatsapp_number || parsedSettings?.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number,
+      };
+
+      return mergedData;
     } catch {
       // ignore
     }
@@ -584,6 +597,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }, (err) => {
       console.warn('Firestore settings listener error (offline cache active):', err);
+      // Fallback load from local storage backup if Firestore is blocked by quota
+      const backup = getBrandingBackupLocal();
+      if (backup) {
+        handleApplySettingsData(backup);
+      }
     });
 
     const unsubStoreSettingsGeneral = onSnapshot(storeSettingsDocRef, (snap) => {
@@ -591,7 +609,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         handleApplySettingsData(snap.data());
       }
     }, (err) => {
-      console.warn('Firestore store_settings/general listener info:', err);
+      console.warn('Firestore store_settings/general listener info (offline cache active):', err);
+      // Fallback load from local storage backup if Firestore is blocked by quota
+      const backup = getBrandingBackupLocal();
+      if (backup) {
+        handleApplySettingsData(backup);
+      }
     });
 
     // B. Listen to Categories (Real-time)

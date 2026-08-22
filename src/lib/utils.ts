@@ -493,7 +493,10 @@ export {
   idbSaveItem,
   idbSaveAll,
   idbGetAll,
-  idbDeleteItem
+  idbDeleteItem,
+  DISSOF_BRANDING_BACKUP_KEY,
+  saveBrandingBackupLocal,
+  getBrandingBackupLocal
 } from './storageFallback';
 
 /**

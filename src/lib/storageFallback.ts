@@ -12,6 +12,14 @@ const STORE_ORDERS = 'orders';
 const STORE_BRANDING = 'branding';
 const STORE_SETTINGS = 'settings';
 
+export const DISSOF_BRANDING_BACKUP_KEY = 'dissof_branding_backup';
+
+export interface DissofBrandingBackupData {
+  data: Record<string, any>;
+  timestamp: string;
+  pendingSync: boolean;
+}
+
 let idbPromise: Promise<IDBDatabase> | null = null;
 
 export function getIndexedDB(): Promise<IDBDatabase> {
@@ -289,4 +297,75 @@ export function safeLocalStorageSet(key: string, value: string): boolean {
     }
     return false;
   }
+}
+
+/**
+ * Save complete branding settings & images directly to LocalStorage + IndexedDB
+ * as offline resilient fallback when Firestore Quota is exceeded.
+ */
+export function saveBrandingBackupLocal(payload: Record<string, any>, pendingSync = true): boolean {
+  try {
+    const backupObj: DissofBrandingBackupData = {
+      data: payload,
+      timestamp: new Date().toISOString(),
+      pendingSync
+    };
+    
+    // Save to LocalStorage under 'dissof_branding_backup'
+    safeLocalStorageSet(DISSOF_BRANDING_BACKUP_KEY, JSON.stringify(backupObj));
+
+    // Also persist individual fast-access keys
+    if (payload.logo_url || payload.logoUrl) {
+      localStorage.setItem('dissof_store_logo', payload.logo_url || payload.logoUrl);
+    }
+    if (payload.hero_banner_url || payload.heroBanner) {
+      localStorage.setItem('dissof_store_hero_banner', payload.hero_banner_url || payload.heroBanner);
+    }
+    if (payload.backgroundColor || payload.background) {
+      localStorage.setItem('dissof_store_background', JSON.stringify({
+        type: 'color',
+        value: payload.backgroundColor || (typeof payload.background === 'string' ? payload.background : payload.background?.value) || '#F9F7F2',
+        mode: 'cover'
+      }));
+    }
+
+    // Persist full settings key
+    localStorage.setItem('site_settings', JSON.stringify(payload));
+
+    // Also save to IndexedDB for ultra durability
+    idbSaveItem(STORE_BRANDING, { key: 'latest_branding_backup', ...backupObj }).catch(() => {});
+
+    // Broadcast across windows/tabs and StoreContext
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dissof_branding_updated', { detail: payload }));
+    }
+    return true;
+  } catch (err) {
+    console.warn('[BrandingBackup] Error writing branding backup:', err);
+    return false;
+  }
+}
+
+/**
+ * Load branding backup from LocalStorage or IndexedDB
+ */
+export function getBrandingBackupLocal(): Record<string, any> | null {
+  try {
+    const raw = localStorage.getItem(DISSOF_BRANDING_BACKUP_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed.data || parsed;
+      }
+    }
+
+    // Fallback to site_settings
+    const settingsRaw = localStorage.getItem('site_settings');
+    if (settingsRaw) {
+      return JSON.parse(settingsRaw);
+    }
+  } catch (err) {
+    console.warn('[BrandingBackup] Error reading branding backup:', err);
+  }
+  return null;
 }

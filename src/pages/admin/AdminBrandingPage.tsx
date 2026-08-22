@@ -19,14 +19,16 @@ import {
   FileText,
   Save,
   CreditCard,
-  QrCode
+  QrCode,
+  Crop
 } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useStore } from '../../context/StoreContext';
 import { SiteSettings, PaymentSettings } from '../../types';
-import { getImageSizeInKB } from '../../lib/utils';
+import { getImageSizeInKB, hardCompressImage } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
+import { ImageCropModal, AspectRatioOption } from '../../components/common/ImageCropModal';
 
 const COLOR_PRESETS = [
   { name: 'Krem Pastel (Bawaan)', hex: '#F9F7F2' },
@@ -38,6 +40,14 @@ const COLOR_PRESETS = [
   { name: 'Lavender Mist', hex: '#F7F4FA' },
   { name: 'Pale Peach Butter', hex: '#FFF8F2' },
 ];
+
+interface ActiveCropState {
+  keyType: string;
+  label: string;
+  imageSrc: string;
+  defaultAspect?: number;
+  aspectOptions?: AspectRatioOption[];
+}
 
 export const AdminBrandingPage: React.FC = () => {
   const { 
@@ -70,6 +80,9 @@ export const AdminBrandingPage: React.FC = () => {
     igFeed2?: string;
     igFeed3?: string;
   }>({});
+
+  // Crop Modal state
+  const [activeCrop, setActiveCrop] = useState<ActiveCropState | null>(null);
 
   // Real-time Text State
   const [brandName, setBrandName] = useState(settings?.brand_name || 'DISSOF.ID');
@@ -138,141 +151,146 @@ export const AdminBrandingPage: React.FC = () => {
   };
 
   // =========================================================================
-  // 1 & 2. UNIVERSAL IMAGE UPLOAD WITH CANVAS COMPRESSION & DIRECT FIRESTORE SAVE
+  // SAVE COMPRESSED / CROPPED IMAGE TO FIRESTORE (DIRECT & REAL-TIME)
+  // =========================================================================
+  const saveImageToFirestore = async (keyType: string, base64Image: string, label: string) => {
+    try {
+      setUploadingKeys((prev) => ({ ...prev, [keyType]: true }));
+
+      // Ensure compressed quality
+      const compressedBase64 = await hardCompressImage(base64Image, 800, 0.6, 180);
+
+      // 1. Update State Lokal
+      setBrandingData((prev) => ({ ...prev, [keyType]: compressedBase64 }));
+
+      // Mapping payload
+      const nowIso = new Date().toISOString();
+      const generalPayload: Record<string, any> = {
+        [keyType]: compressedBase64,
+        updatedAt: nowIso
+      };
+
+      const storeConfigPayload: Partial<SiteSettings> = {};
+      if (keyType === 'logoUrl' || keyType === 'logo_url') {
+        storeConfigPayload.logo_url = compressedBase64;
+      } else if (keyType === 'faviconUrl' || keyType === 'favicon_url') {
+        storeConfigPayload.favicon_url = compressedBase64;
+      } else if (keyType === 'heroBanner' || keyType === 'hero_banner_url') {
+        storeConfigPayload.hero_banner_url = compressedBase64;
+      } else if (keyType === 'eventBanner' || keyType === 'popup_banner_image') {
+        storeConfigPayload.popup_banner_image = compressedBase64;
+      } else if (keyType.startsWith('highlightImage')) {
+        const idx = parseInt(keyType.replace('highlightImage', ''), 10);
+        const currentHighlights = settings?.highlight_images && settings.highlight_images.length > 0
+          ? [...settings.highlight_images]
+          : [
+              'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
+              'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
+            ];
+        currentHighlights[idx] = compressedBase64;
+        storeConfigPayload.highlight_images = currentHighlights;
+        generalPayload.highlight_images = currentHighlights;
+      } else if (keyType.startsWith('igFeed')) {
+        const idx = parseInt(keyType.replace('igFeed', ''), 10);
+        const currentFeeds = settings?.instagram_feed_images && settings.instagram_feed_images.length === 4
+          ? [...settings.instagram_feed_images]
+          : [
+              'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
+              'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
+              'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
+              'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
+            ];
+        currentFeeds[idx] = compressedBase64;
+        storeConfigPayload.instagram_feed_images = currentFeeds;
+        generalPayload.instagram_feed_images = currentFeeds;
+      }
+
+      // 2. Direct Firestore Save
+      await setDoc(doc(db, 'store_settings', 'general'), generalPayload, { merge: true });
+
+      if (Object.keys(storeConfigPayload).length > 0) {
+        await saveSettingsLocal(storeConfigPayload);
+      }
+
+      if (keyType === 'qrisImage' || keyType === 'qris_image') {
+        await savePaymentSettings({
+          ...paymentSettings,
+          qris_image: compressedBase64
+        });
+      }
+
+      if (keyType === 'bankAccountImage') {
+        await savePaymentSettings({
+          ...paymentSettings,
+          bank_account_image: compressedBase64
+        } as any);
+      }
+
+      showToast('success', `${label} berhasil di-crop & disimpan langsung ke Firestore ♡`);
+    } catch (err: any) {
+      console.error('Gagal simpan ke Firestore:', err);
+      showToast('error', 'Gagal menyimpan foto ke database: ' + err.message);
+    } finally {
+      setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
+    }
+  };
+
+  // =========================================================================
+  // HANDLE FILE SELECTION -> OPEN CROP MODAL IMMEDIATELY
   // =========================================================================
   const handleBrandingImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    keyType: string
+    keyType: string,
+    label: string,
+    defaultAspect?: number,
+    aspectOptions?: AspectRatioOption[]
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploadingKeys((prev) => ({ ...prev, [keyType]: true }));
-
     const reader = new FileReader();
-    reader.onload = async (event) => {
-      const img = new Image();
-      img.onload = async () => {
-        try {
-          // Canvas compression: max 800px, JPEG 0.6
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const maxDim = 800;
-          if (width > height && width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-          }
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
-
-          // 1. Update State Lokal secara instan
-          setBrandingData((prev) => ({ ...prev, [keyType]: compressedBase64 }));
-
-          // Mapping ke document schema Firestore
-          const nowIso = new Date().toISOString();
-          const generalPayload: Record<string, any> = {
-            [keyType]: compressedBase64,
-            updatedAt: nowIso
-          };
-
-          // Synchronize to settings/store_config & payment_settings
-          const storeConfigPayload: Partial<SiteSettings> = {};
-          if (keyType === 'logoUrl' || keyType === 'logo_url') {
-            storeConfigPayload.logo_url = compressedBase64;
-          } else if (keyType === 'faviconUrl' || keyType === 'favicon_url') {
-            storeConfigPayload.favicon_url = compressedBase64;
-          } else if (keyType === 'heroBanner' || keyType === 'hero_banner_url') {
-            storeConfigPayload.hero_banner_url = compressedBase64;
-          } else if (keyType === 'eventBanner' || keyType === 'popup_banner_image') {
-            storeConfigPayload.popup_banner_image = compressedBase64;
-          } else if (keyType.startsWith('highlightImage')) {
-            const idx = parseInt(keyType.replace('highlightImage', ''), 10);
-            const currentHighlights = settings?.highlight_images && settings.highlight_images.length > 0
-              ? [...settings.highlight_images]
-              : [
-                  'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
-                  'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
-                ];
-            currentHighlights[idx] = compressedBase64;
-            storeConfigPayload.highlight_images = currentHighlights;
-            generalPayload.highlight_images = currentHighlights;
-          } else if (keyType.startsWith('igFeed')) {
-            const idx = parseInt(keyType.replace('igFeed', ''), 10);
-            const currentFeeds = settings?.instagram_feed_images && settings.instagram_feed_images.length === 4
-              ? [...settings.instagram_feed_images]
-              : [
-                  'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
-                  'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
-                  'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
-                  'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
-                ];
-            currentFeeds[idx] = compressedBase64;
-            storeConfigPayload.instagram_feed_images = currentFeeds;
-            generalPayload.instagram_feed_images = currentFeeds;
-          }
-
-          // 2. LANGSUNG SIMPAN KE FIRESTORE (Doc: 'store_settings/general' dan 'settings/store_config')
-          try {
-            await setDoc(doc(db, 'store_settings', 'general'), generalPayload, { merge: true });
-
-            if (Object.keys(storeConfigPayload).length > 0) {
-              await saveSettingsLocal(storeConfigPayload);
-            }
-
-            if (keyType === 'qrisImage' || keyType === 'qris_image') {
-              await savePaymentSettings({
-                ...paymentSettings,
-                qris_image: compressedBase64
-              });
-            }
-
-            if (keyType === 'bankAccountImage') {
-              await savePaymentSettings({
-                ...paymentSettings,
-                bank_account_image: compressedBase64
-              } as any);
-            }
-
-            showToast('success', 'Foto berhasil diperbarui & tersimpan langsung ke Firestore ♡');
-          } catch (err: any) {
-            console.error('Gagal simpan ke Firestore:', err);
-            showToast('error', 'Gagal menyimpan foto ke database: ' + err.message);
-          }
-        } catch (procErr: any) {
-          console.error('Error proses kompresi gambar:', procErr);
-          showToast('error', 'Gagal memproses file gambar.');
-        } finally {
-          setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
-        }
-      };
-      img.onerror = () => {
-        setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
-        showToast('error', 'Format gambar tidak didukung atau file rusak.');
-      };
-      img.src = event.target?.result as string;
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        // Open Crop Modal directly with chosen image
+        setActiveCrop({
+          keyType,
+          label,
+          imageSrc: event.target.result as string,
+          defaultAspect,
+          aspectOptions,
+        });
+      }
     };
     reader.onerror = () => {
-      setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
       showToast('error', 'Gagal membaca file dari perangkat.');
     };
     reader.readAsDataURL(file);
 
-    // Reset input value so user can re-upload same image if needed
+    // Reset input value so same file can be re-selected if needed
     if (e.target) e.target.value = '';
   };
 
+  // Trigger crop for already uploaded image
+  const handleOpenCropExisting = (
+    keyType: string,
+    label: string,
+    currentImgSrc: string,
+    defaultAspect?: number,
+    aspectOptions?: AspectRatioOption[]
+  ) => {
+    if (!currentImgSrc) return;
+    setActiveCrop({
+      keyType,
+      label,
+      imageSrc: currentImgSrc,
+      defaultAspect,
+      aspectOptions,
+    });
+  };
+
   // Helper to remove / reset image
-  const handleRemoveImage = async (keyType: string) => {
-    if (!window.confirm('Hapus foto ini?')) return;
+  const handleRemoveImage = async (keyType: string, label: string) => {
+    if (!window.confirm(`Hapus ${label}?`)) return;
 
     setBrandingData((prev) => ({ ...prev, [keyType]: undefined }));
 
@@ -292,9 +310,11 @@ export const AdminBrandingPage: React.FC = () => {
         await saveSettingsLocal({ popup_banner_image: '' });
       } else if (keyType === 'qrisImage') {
         await savePaymentSettings({ ...paymentSettings, qris_image: undefined });
+      } else if (keyType === 'bankAccountImage') {
+        await savePaymentSettings({ ...paymentSettings, bank_account_image: undefined } as any);
       }
 
-      showToast('success', 'Foto berhasil dihapus.');
+      showToast('success', `${label} berhasil dihapus.`);
     } catch (err: any) {
       showToast('error', 'Gagal menghapus foto: ' + err.message);
     }
@@ -353,7 +373,7 @@ export const AdminBrandingPage: React.FC = () => {
   };
 
   // =========================================================================
-  // RENDER ITEM UPLOAD WITH NATIVE LABEL & HIDDEN INPUT TRIGGER
+  // RENDER ITEM UPLOAD WITH NATIVE LABEL, CROP BUTTON, AND HIDDEN INPUT
   // =========================================================================
   const renderUploadBox = (
     keyType: string,
@@ -361,7 +381,9 @@ export const AdminBrandingPage: React.FC = () => {
     sublabel: string,
     currentImg: string | undefined,
     aspectRatioText: string,
-    heightClass: string = 'h-40'
+    heightClass: string = 'h-40',
+    defaultAspect?: number,
+    aspectOptions?: AspectRatioOption[]
   ) => {
     const inputId = `upload-branding-${keyType}`;
     const isUploading = !!uploadingKeys[keyType];
@@ -373,7 +395,7 @@ export const AdminBrandingPage: React.FC = () => {
           type="file"
           id={inputId}
           accept="image/*"
-          onChange={(e) => handleBrandingImageUpload(e, keyType)}
+          onChange={(e) => handleBrandingImageUpload(e, keyType, label, defaultAspect, aspectOptions)}
           style={{ display: 'none' }}
         />
 
@@ -383,8 +405,9 @@ export const AdminBrandingPage: React.FC = () => {
             <h4 className="font-bold text-xs sm:text-sm text-[#2E241E]">{label}</h4>
             <p className="text-[11px] text-[#7A6A61]">{sublabel}</p>
           </div>
-          <span className="text-[10px] text-pink-600 font-medium bg-pink-50 px-2 py-0.5 rounded-md border border-pink-100 shrink-0">
-            {aspectRatioText}
+          <span className="text-[10px] text-pink-600 font-medium bg-pink-50 px-2 py-0.5 rounded-md border border-pink-100 shrink-0 flex items-center gap-1">
+            <Crop className="w-3 h-3 text-pink-500" />
+            <span>{aspectRatioText}</span>
           </span>
         </div>
 
@@ -398,47 +421,66 @@ export const AdminBrandingPage: React.FC = () => {
                 className="w-full h-full object-cover"
               />
 
-              {/* Hover/Tap Overlay */}
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-2">
+              {/* Hover/Tap Overlay with Zoom & Crop */}
+              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-2">
                 <button
                   type="button"
                   onClick={() => setPreviewZoomImage({ src: currentImg, label })}
                   className="px-3 py-1.5 rounded-xl bg-white text-[#2D2D2D] font-bold text-[11px] shadow-sm hover:bg-pink-50 flex items-center gap-1 cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span>Lihat Full</span>
+                  <span>Zoom</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenCropExisting(keyType, label, currentImg, defaultAspect, aspectOptions)}
+                  className="px-3 py-1.5 rounded-xl bg-pink-600 text-white font-bold text-[11px] shadow-sm hover:bg-pink-700 flex items-center gap-1 cursor-pointer"
+                >
+                  <Crop className="w-3.5 h-3.5" />
+                  <span>Crop / Potong</span>
                 </button>
               </div>
 
               {/* Compression Badge */}
               <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[9px] font-mono flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5 text-pink-300" />
-                <span>{getImageSizeInKB(currentImg)} KB (Auto-Optimized)</span>
+                <span>{getImageSizeInKB(currentImg)} KB (Bisa di-Crop)</span>
               </div>
             </div>
 
-            {/* Action Row: Label Trigger (Ganti) & Hapus */}
-            <div className="flex items-center gap-2">
+            {/* Action Row: Label Trigger (Ganti), Crop Button & Hapus */}
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
               <label
                 htmlFor={inputId}
-                className="flex-1 min-w-[130px] px-3.5 py-2 rounded-xl bg-white border border-pink-300 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer select-none"
+                className="flex-1 min-w-[120px] px-3 py-2 rounded-xl bg-white border border-pink-300 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer select-none"
               >
                 {isUploading ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-pink-600" />
-                    <span>Mengompres...</span>
+                    <span>Menyimpan...</span>
                   </>
                 ) : (
                   <>
                     <Upload className="w-3.5 h-3.5 text-pink-600" />
-                    <span>Ganti Foto (Galeri/HP)</span>
+                    <span>Ganti Foto</span>
                   </>
                 )}
               </label>
 
               <button
                 type="button"
-                onClick={() => handleRemoveImage(keyType)}
+                onClick={() => handleOpenCropExisting(keyType, label, currentImg, defaultAspect, aspectOptions)}
+                className="px-3 py-2 rounded-xl bg-pink-50 border border-pink-200 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center justify-center gap-1 shadow-2xs transition-all cursor-pointer"
+                title="Crop & Sesuaikan Posisi Foto"
+              >
+                <Crop className="w-3.5 h-3.5" />
+                <span>Crop Foto</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleRemoveImage(keyType, label)}
                 className="px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer"
                 title="Hapus Foto"
               >
@@ -462,10 +504,10 @@ export const AdminBrandingPage: React.FC = () => {
                 )}
               </div>
               <p className="font-bold text-xs text-[#2E241E]">
-                {isUploading ? 'Sedang Mengompres...' : 'Klik untuk Pilih Foto dari Galeri HP / PC'}
+                {isUploading ? 'Sedang Memproses...' : 'Klik untuk Pilih Foto dari Galeri (Bisa Langsung di-Crop)'}
               </p>
               <span className="text-[10px] text-[#8C7D75] mt-0.5 block">
-                Format JPG/PNG/WEBP (Otomatis dikompres &lt; 150KB &amp; simpan ke Firestore)
+                Format JPG/PNG/WEBP (Fitur Crop, Zoom, Rotasi &amp; Simpan Real-time ke Firestore)
               </span>
             </label>
 
@@ -473,8 +515,8 @@ export const AdminBrandingPage: React.FC = () => {
               htmlFor={inputId}
               className="w-full px-4 py-2.5 rounded-xl bg-pink-50 border border-pink-200 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer select-none"
             >
-              <Upload className="w-4 h-4 text-pink-600" />
-              <span>Pilih Foto / Unggah dari Galeri</span>
+              <Crop className="w-4 h-4 text-pink-600" />
+              <span>Pilih Foto &amp; Buka Alat Crop</span>
             </label>
           </div>
         )}
@@ -489,20 +531,20 @@ export const AdminBrandingPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-pink-100 pb-5">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-100/70 text-pink-700 text-xs font-bold mb-2">
-            <Palette className="w-3.5 h-3.5" />
-            <span>Pusat Kendali Branding &amp; Media Toko</span>
+            <Crop className="w-3.5 h-3.5" />
+            <span>Pusat Kendali Branding &amp; Alat Crop Foto Lengkap</span>
           </div>
           <h1 className="font-playfair text-2xl sm:text-3xl font-bold text-[#2D2D2D]">
             Pengaturan Toko &amp; Branding DISSOF.ID ♡
           </h1>
           <p className="text-xs text-[#7A6A61] mt-1 font-medium max-w-3xl">
-            Unggah logo, banner hero, banner event pop-up, foto QRIS, rekening bank, serta galeri Instagram. Semua foto langsung dikompres (maks 800px, JPEG 0.6) dan tersimpan ke Firestore secara real-time.
+            Semua foto (Logo, Favicon, Banner Hero, QRIS, Rekening Bank, Banner Event Pop-Up, Highlight Kerajinan, dan Galeri Instagram) kini dapat di-crop, di-zoom, diputar, dan disesuaikan rasionya secara bebas sebelum disimpan ke Firestore.
           </p>
         </div>
 
         <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shrink-0 shadow-2xs">
           <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
-          <span>Real-Time Sync Live</span>
+          <span>Live Real-Time Sync</span>
         </div>
       </div>
 
@@ -535,8 +577,8 @@ export const AdminBrandingPage: React.FC = () => {
               : 'bg-white text-[#63534B] hover:bg-pink-50 border border-pink-100'
           }`}
         >
-          <ImageIcon className="w-4 h-4 text-pink-300" />
-          <span>1. Unggah Foto &amp; Media (Logo, Banner, QRIS, IG)</span>
+          <Crop className="w-4 h-4 text-pink-300" />
+          <span>1. Unggah &amp; Crop Foto (Logo, Banner, QRIS, IG)</span>
         </button>
 
         <button
@@ -567,7 +609,7 @@ export const AdminBrandingPage: React.FC = () => {
       </div>
 
       {/* ========================================================
-          TAB 1: MEDIA UPLOADERS (NATIVE INPUT + INSTANT FIRESTORE)
+          TAB 1: MEDIA UPLOADERS WITH CROP MODAL
           ======================================================== */}
       {activeTab === 'media' && (
         <div className="space-y-8 animate-in fade-in duration-200">
@@ -576,11 +618,18 @@ export const AdminBrandingPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {renderUploadBox(
               'logoUrl',
-              'Logo Toko (Header Navbar)',
+              'Logo Header Toko (Navbar)',
               'Tampil di bagian atas navigasi website pembeli (Format PNG Transparan / JPG)',
               brandingData.logoUrl,
-              'Rasio Bebas / Transparan',
-              'h-32'
+              'Rasio Bebas / 1:1 / 16:9',
+              'h-36',
+              undefined,
+              [
+                { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+                { label: '1:1 Persegi', value: 1, badge: 'Logo Square' },
+                { label: '4:3 Normal', value: 4 / 3, badge: 'Logo Horizontal' },
+                { label: '16:9 Wide', value: 16 / 9, badge: 'Header Wide' },
+              ]
             )}
 
             {renderUploadBox(
@@ -589,7 +638,12 @@ export const AdminBrandingPage: React.FC = () => {
               'Icon kecil tab browser dan shortcut home screen pembeli',
               brandingData.faviconUrl,
               'Rasio 1:1 Persegi (256x256)',
-              'h-32'
+              'h-36',
+              1,
+              [
+                { label: '1:1 Persegi', value: 1, badge: 'Favicon Standard' },
+                { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+              ]
             )}
           </div>
 
@@ -601,7 +655,15 @@ export const AdminBrandingPage: React.FC = () => {
               'Foto highlight aksesoris besar di sebelah kanan headline halaman depan',
               brandingData.heroBanner,
               'Rasio 4:5 atau 1:1',
-              'h-52'
+              'h-52',
+              4 / 5,
+              [
+                { label: '4:5 Portrait', value: 4 / 5, badge: 'Hero Card Rekomendasi' },
+                { label: '1:1 Persegi', value: 1, badge: 'Square' },
+                { label: '3:4 Post', value: 3 / 4, badge: 'Portrait' },
+                { label: '16:9 Banner', value: 16 / 9, badge: 'Landscape' },
+                { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+              ]
             )}
 
             {renderUploadBox(
@@ -610,7 +672,13 @@ export const AdminBrandingPage: React.FC = () => {
               'Muncul otomatis saat pembeli memilih pembayaran QRIS di checkout',
               brandingData.qrisImage,
               'Rasio 1:1 Persegi',
-              'h-52'
+              'h-52',
+              1,
+              [
+                { label: '1:1 Persegi', value: 1, badge: 'QRIS Kotak' },
+                { label: '4:3 Normal', value: 4 / 3, badge: 'Stiker QRIS' },
+                { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+              ]
             )}
           </div>
 
@@ -622,7 +690,14 @@ export const AdminBrandingPage: React.FC = () => {
               'Foto booth Car Free Night / bazaar di section "Find Us Offline ♡"',
               brandingData.eventBanner,
               'Rasio 16:9 atau 4:3',
-              'h-48'
+              'h-48',
+              16 / 9,
+              [
+                { label: '16:9 Wide', value: 16 / 9, badge: 'Banner Event' },
+                { label: '4:3 Standar', value: 4 / 3, badge: 'Poster' },
+                { label: '1:1 Persegi', value: 1, badge: 'Square' },
+                { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+              ]
             )}
 
             {renderUploadBox(
@@ -630,16 +705,24 @@ export const AdminBrandingPage: React.FC = () => {
               'Foto Buku Rekening / Panduan Transfer Bank',
               'Tampil sebagai panduan visual pembayaran transfer bank di checkout',
               brandingData.bankAccountImage,
-              'Rasio Bebas / 16:9',
-              'h-48'
+              'Rasio 16:9 atau Bebas',
+              'h-48',
+              16 / 9,
+              [
+                { label: '16:9 Wide', value: 16 / 9, badge: 'Buku Rekening' },
+                { label: '4:3 Standar', value: 4 / 3, badge: 'ATM Card' },
+                { label: '1:1 Persegi', value: 1, badge: 'Square' },
+                { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+              ]
             )}
           </div>
 
           {/* Section 4: Galeri Craft Highlight (2 Foto) */}
           <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-xs space-y-4">
             <div className="border-b border-pink-100 pb-3">
-              <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
-                Galeri Highlight Aksesoris Handmade (2 Foto)
+              <h3 className="font-bold text-sm sm:text-base text-[#2E241E] flex items-center gap-2">
+                <span>Galeri Highlight Aksesoris Handmade (2 Foto Craft)</span>
+                <Sparkles className="w-4 h-4 text-pink-500" />
               </h3>
               <p className="text-xs text-[#7A6A61]">
                 Dua foto proses kerajinan di samping cerita "made with love, bead by bead ♡"
@@ -653,7 +736,14 @@ export const AdminBrandingPage: React.FC = () => {
                 'Proses merangkai manik-manik',
                 brandingData.highlightImage0,
                 'Rasio 4:5 atau 1:1',
-                'h-44'
+                'h-44',
+                4 / 5,
+                [
+                  { label: '4:5 Craft', value: 4 / 5, badge: 'Highlight' },
+                  { label: '1:1 Persegi', value: 1, badge: 'Square' },
+                  { label: '3:4 Post', value: 3 / 4, badge: 'Portrait' },
+                  { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+                ]
               )}
 
               {renderUploadBox(
@@ -662,7 +752,14 @@ export const AdminBrandingPage: React.FC = () => {
                 'Detail charm & packaging estetik',
                 brandingData.highlightImage1,
                 'Rasio 4:5 atau 1:1',
-                'h-44'
+                'h-44',
+                4 / 5,
+                [
+                  { label: '4:5 Craft', value: 4 / 5, badge: 'Highlight' },
+                  { label: '1:1 Persegi', value: 1, badge: 'Square' },
+                  { label: '3:4 Post', value: 3 / 4, badge: 'Portrait' },
+                  { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+                ]
               )}
             </div>
           </div>
@@ -682,10 +779,10 @@ export const AdminBrandingPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {renderUploadBox('igFeed0', 'Kotak IG #1', 'Foto grid 1', brandingData.igFeed0, '1:1 Persegi', 'h-36')}
-              {renderUploadBox('igFeed1', 'Kotak IG #2', 'Foto grid 2', brandingData.igFeed1, '1:1 Persegi', 'h-36')}
-              {renderUploadBox('igFeed2', 'Kotak IG #3', 'Foto grid 3', brandingData.igFeed2, '1:1 Persegi', 'h-36')}
-              {renderUploadBox('igFeed3', 'Kotak IG #4', 'Foto grid 4', brandingData.igFeed3, '1:1 Persegi', 'h-36')}
+              {renderUploadBox('igFeed0', 'Kotak IG #1', 'Foto grid 1', brandingData.igFeed0, '1:1 Persegi', 'h-36', 1)}
+              {renderUploadBox('igFeed1', 'Kotak IG #2', 'Foto grid 2', brandingData.igFeed1, '1:1 Persegi', 'h-36', 1)}
+              {renderUploadBox('igFeed2', 'Kotak IG #3', 'Foto grid 3', brandingData.igFeed2, '1:1 Persegi', 'h-36', 1)}
+              {renderUploadBox('igFeed3', 'Kotak IG #4', 'Foto grid 4', brandingData.igFeed3, '1:1 Persegi', 'h-36', 1)}
             </div>
           </div>
 
@@ -907,7 +1004,24 @@ export const AdminBrandingPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Zoom Modal */}
+      {/* Full Image Crop Modal */}
+      {activeCrop && (
+        <ImageCropModal
+          isOpen={true}
+          imageSrc={activeCrop.imageSrc}
+          title={`Crop & Sesuaikan: ${activeCrop.label}`}
+          description="Geser, cubit (pinch), zoom, putar, dan pilih rasio aspek terbaik untuk foto ini."
+          defaultAspect={activeCrop.defaultAspect}
+          aspectOptions={activeCrop.aspectOptions}
+          onCropComplete={(croppedBase64) => {
+            saveImageToFirestore(activeCrop.keyType, croppedBase64, activeCrop.label);
+            setActiveCrop(null);
+          }}
+          onClose={() => setActiveCrop(null)}
+        />
+      )}
+
+      {/* Fullscreen Zoom Modal */}
       {previewZoomImage && (
         <div
           className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4 cursor-pointer"

@@ -514,32 +514,59 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 1. REAL-TIME FIRESTORE DATABASE LISTENERS (SYNC ACROSS ALL MOBILE & DESKTOP)
   // =========================================================================
   useEffect(() => {
-    // A. Listen to Site Settings & Branding (Real-time)
+    // A. Listen to Site Settings & Branding (Real-time: supports both settings/store_config and store_settings/general)
     const settingsDocRef = doc(db, 'settings', 'store_config');
+    const storeSettingsDocRef = doc(db, 'store_settings', 'general');
+
+    const handleApplySettingsData = (data: Partial<SiteSettings> & Record<string, any>) => {
+      // Map potential alternate keys (eventBanner, heroBanner, qrisImage, logoUrl, etc.)
+      const normalizedData: Partial<SiteSettings> = {
+        ...data,
+        logo_url: data.logo_url ?? data.logoUrl ?? data.logo,
+        hero_banner_url: data.hero_banner_url ?? data.heroBanner ?? data.heroBannerUrl,
+        popup_banner_image: data.popup_banner_image ?? data.eventBanner ?? data.popupBanner ?? data.event_banner,
+        favicon_url: data.favicon_url ?? data.favicon,
+      };
+
+      setSettings((prev) => ({
+        ...prev,
+        ...normalizedData,
+      }));
+
+      if (normalizedData.logo_url !== undefined) {
+        setStoreLogo(normalizedData.logo_url || null);
+        setStoredLogo(normalizedData.logo_url || '');
+      }
+      if (normalizedData.hero_banner_url !== undefined) {
+        setStoreHeroBannerState(normalizedData.hero_banner_url || null);
+        setStoredHeroBanner(normalizedData.hero_banner_url || '');
+      }
+      if (normalizedData.background) {
+        setStoreBackgroundState(normalizedData.background);
+        setStoredBackground(normalizedData.background);
+      }
+      if (normalizedData.whatsapp_number) {
+        setStoredWhatsAppNumber(normalizedData.whatsapp_number);
+      }
+      
+      // If qris image or bank info is in store_settings/general, update payment settings as well
+      if (data.qrisImage || data.qris_image || data.bank_name || data.account_number) {
+        setPaymentSettingsState((prev) => ({
+          ...prev,
+          qris_image: data.qrisImage ?? data.qris_image ?? prev.qris_image,
+          bank_name: data.bank_name ?? prev.bank_name,
+          account_number: data.account_number ?? prev.account_number,
+          account_holder: data.account_holder ?? prev.account_holder,
+        }));
+      }
+
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...data }));
+      setIsOnlineSynced(true);
+    };
+
     const unsubSettings = onSnapshot(settingsDocRef, (snap) => {
       if (snap.exists()) {
-        const data = snap.data() as SiteSettings;
-        setSettings((prev) => ({
-          ...prev,
-          ...data,
-        }));
-        if (data.logo_url !== undefined) {
-          setStoreLogo(data.logo_url || null);
-          setStoredLogo(data.logo_url || '');
-        }
-        if (data.hero_banner_url !== undefined) {
-          setStoreHeroBannerState(data.hero_banner_url || null);
-          setStoredHeroBanner(data.hero_banner_url || '');
-        }
-        if (data.background) {
-          setStoreBackgroundState(data.background);
-          setStoredBackground(data.background);
-        }
-        if (data.whatsapp_number) {
-          setStoredWhatsAppNumber(data.whatsapp_number);
-        }
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...data }));
-        setIsOnlineSynced(true);
+        handleApplySettingsData(snap.data() as SiteSettings);
       } else {
         // Seed initial settings into Firestore if empty
         const initialBg = getStoredBackground();
@@ -557,6 +584,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }, (err) => {
       console.warn('Firestore settings listener error (offline cache active):', err);
+    });
+
+    const unsubStoreSettingsGeneral = onSnapshot(storeSettingsDocRef, (snap) => {
+      if (snap.exists()) {
+        handleApplySettingsData(snap.data());
+      }
+    }, (err) => {
+      console.warn('Firestore store_settings/general listener info:', err);
     });
 
     // B. Listen to Categories (Real-time)
@@ -716,6 +751,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     return () => {
       unsubSettings();
+      unsubStoreSettingsGeneral();
       unsubCategories();
       unsubProducts();
       unsubOrders();

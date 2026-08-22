@@ -94,7 +94,7 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
   const handleNameChange = (val: string) => {
     setName(val);
     if (!editingCategory) {
-      const generatedSlug = val
+      const generatedSlug = String(val || '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '');
@@ -141,7 +141,7 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
     setErrorMessage('');
 
     try {
-      const catSlug = slug.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const catSlug = String(slug || '').trim() || String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const catId = editingCategory ? editingCategory.id : (catSlug || `cat-${Date.now()}`);
 
       const categoryToSave: Category = {
@@ -188,9 +188,13 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
   };
 
   const filteredCategories = categories.filter((c) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q) || (c.description && c.description.toLowerCase().includes(q));
+    const q = String(searchQuery || '').trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(c?.name || '').toLowerCase().includes(q) ||
+      String(c?.slug || '').toLowerCase().includes(q) ||
+      String(c?.description || '').toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -261,7 +265,7 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({ onNavi
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredCategories.map((cat) => {
           const productCount = products.filter(
-            (p) => p.category_id === cat.id || p.category_id === cat.slug || p.category_name?.toLowerCase() === cat.name.toLowerCase()
+            (p) => p.category_id === cat.id || p.category_id === cat.slug || String(p.category_name || '').toLowerCase() === String(cat.name || '').toLowerCase()
           ).length;
 
           return (

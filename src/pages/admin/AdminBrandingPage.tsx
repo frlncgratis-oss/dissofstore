@@ -673,7 +673,7 @@ export const AdminBrandingPage: React.FC = () => {
                   type="button"
                   onClick={() => handleApplyColor(col.hex)}
                   className={`p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3 text-left cursor-pointer ${
-                    selectedColor.toLowerCase() === col.hex.toLowerCase()
+                    String(selectedColor || '').toLowerCase() === String(col.hex || '').toLowerCase()
                       ? 'border-pink-500 bg-pink-50/50 shadow-xs'
                       : 'border-black/5 hover:border-pink-300 bg-white'
                   }`}

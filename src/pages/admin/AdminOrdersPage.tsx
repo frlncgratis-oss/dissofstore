@@ -108,12 +108,12 @@ export const AdminOrdersPage: React.FC = () => {
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchId = o.id.toLowerCase().includes(q);
-        const matchName = o.customer_name.toLowerCase().includes(q);
-        const matchPhone = o.customer_whatsapp.includes(q);
-        const matchItems = o.items.some((it) => it.product_name.toLowerCase().includes(q));
+      const q = String(searchQuery || '').trim().toLowerCase();
+      if (q) {
+        const matchId = String(o.id || '').toLowerCase().includes(q);
+        const matchName = String(o.customer_name || '').toLowerCase().includes(q);
+        const matchPhone = String(o.customer_whatsapp || '').includes(q);
+        const matchItems = (o.items || []).some((it) => String(it?.product_name || '').toLowerCase().includes(q));
         return matchId || matchName || matchPhone || matchItems;
       }
       return true;

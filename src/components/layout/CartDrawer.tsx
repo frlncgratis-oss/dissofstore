@@ -21,7 +21,7 @@ import {
   Eye
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { formatIDR, createWhatsAppLink, compressImageFile, isQuotaExceededError } from '../../lib/utils';
+import { formatIDR, createWhatsAppLink, compressImageFile, isQuotaExceededError, safeString, safeTrim, safeToLowerCase } from '../../lib/utils';
 import { ImageWithFallback } from '../common/ImageWithFallback';
 import { Order } from '../../types';
 import confetti from 'canvas-confetti';
@@ -158,17 +158,23 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim()) {
+    const safeCustName = safeTrim(customerName);
+    const safeCustPhone = safeTrim(customerPhone);
+    const safeCustAddress = safeTrim(customerAddress);
+    const safeOrderNotes = safeTrim(orderNotes);
+    const safeMethod = safeString(paymentMethod) === 'whatsapp' ? 'whatsapp' : 'bank_transfer';
+
+    if (!safeCustName) {
       setErrorMsg('Mohon isi nama lengkap kamu.');
       return;
     }
-    if (!customerPhone.trim() || customerPhone.length < 8) {
+    if (!safeCustPhone || safeCustPhone.length < 8) {
       setErrorMsg('Mohon isi nomor WhatsApp yang valid.');
       return;
     }
 
     // Strict validation: Proof of payment is MANDATORY for Bank Transfer & QRIS
-    if (paymentMethod === 'bank_transfer' && !proofImage) {
+    if (safeMethod === 'bank_transfer' && !proofImage) {
       setErrorMsg('Wajib mengunggah foto bukti pembayaran (struk transfer bank / scan QRIS) untuk menyelesaikan pesanan.');
       proofInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -183,45 +189,50 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     try {
       // 1. Create order in Firestore & LocalStorage
       createdOrder = await createOrderLocal({
-        customer_name: customerName.trim(),
-        customer_whatsapp: customerPhone.trim(),
-        customer_address: customerAddress.trim(),
-        order_notes: orderNotes.trim(),
-        payment_method: paymentMethod,
+        customer_name: safeCustName,
+        customer_whatsapp: safeCustPhone,
+        customer_address: safeCustAddress,
+        order_notes: safeOrderNotes,
+        payment_method: safeMethod,
         payment_proof: proofImage || undefined,
         payment_proof_url: proofImage || undefined,
       });
     } catch (err: any) {
       // Automatic Fallback when Firestore Quota is full/exceeded
+      const errMsg = safeToLowerCase(err instanceof Error ? err.message : err?.message || err);
+      const errCode = safeToLowerCase((err as any)?.code);
+
       if (
         isQuotaExceededError(err) ||
-        err?.message?.toLowerCase().includes('quota') ||
-        err?.message?.toLowerCase().includes('exceeded') ||
-        err?.message?.toLowerCase().includes('resource-exhausted')
+        errMsg.includes('quota') ||
+        errMsg.includes('exceeded') ||
+        errMsg.includes('resource-exhausted') ||
+        errCode.includes('quota') ||
+        errCode.includes('resource-exhausted')
       ) {
         console.warn('[Checkout Quota Fallback] Firestore Quota Exceeded. Directing order to WhatsApp Admin:', err);
         isQuotaFallback = true;
         const newOrderId = `ORD-${Date.now().toString().slice(-6)}`;
         createdOrder = {
           id: newOrderId,
-          customer_name: customerName.trim(),
-          customer_whatsapp: customerPhone.trim(),
-          customer_address: customerAddress.trim() || 'Dumai (Ambil di tempat / Kirim)',
+          customer_name: safeCustName,
+          customer_whatsapp: safeCustPhone,
+          customer_address: safeCustAddress || 'Dumai (Ambil di tempat / Kirim)',
           items: cart.map((item) => ({
-            product_id: item.product.id,
-            product_name: item.product.name,
-            price: item.product.price,
-            quantity: item.quantity,
-            variant: item.selectedVariant,
-            custom_note: item.customNote,
-            image: item.product.images?.[0],
+            product_id: safeString(item?.product?.id || 'prod-custom'),
+            product_name: safeString(item?.product?.name || 'Aksesoris DISSOF'),
+            price: Number(item?.product?.price) || 0,
+            quantity: Number(item?.quantity) || 1,
+            variant: item?.selectedVariant ? safeString(item.selectedVariant) : undefined,
+            custom_note: item?.customNote ? safeString(item.customNote) : undefined,
+            image: item?.product?.images?.[0] ? safeString(item.product.images[0]) : undefined,
           })) as any,
-          subtotal: cartSubtotal,
-          total: cartSubtotal,
-          order_notes: orderNotes.trim(),
-          notes: orderNotes.trim(),
+          subtotal: Number(cartSubtotal) || 0,
+          total: Number(cartSubtotal) || 0,
+          order_notes: safeOrderNotes,
+          notes: safeOrderNotes,
           source: 'online',
-          payment_method: paymentMethod,
+          payment_method: safeMethod,
           payment_proof: proofImage || undefined,
           payment_proof_url: proofImage || undefined,
           status: 'Pending',
@@ -229,7 +240,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
           updated_at: new Date().toISOString(),
         };
       } else {
-        setErrorMsg(err.message || 'Gagal memproses pesanan. Silakan coba lagi.');
+        const readableErr = safeString(err?.message || err) || 'Gagal memproses pesanan. Silakan coba lagi.';
+        setErrorMsg(readableErr);
         setIsSubmitting(false);
         return;
       }
@@ -252,30 +264,33 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     // 3. Prepare formatted WhatsApp Order Message
     let itemsText = '';
     cart.forEach((item, index) => {
-      itemsText += `${index + 1}. *${item.product.name}*\n`;
+      const prodName = safeString(item?.product?.name || 'Aksesoris');
+      const prodPrice = Number(item?.product?.price) || 0;
+      const qty = Number(item?.quantity) || 1;
+      itemsText += `${index + 1}. *${prodName}*\n`;
       if (item.selectedVariant) {
-        itemsText += `   • Varian: ${item.selectedVariant}\n`;
+        itemsText += `   • Varian: ${safeString(item.selectedVariant)}\n`;
       }
       if (item.customNote) {
-        itemsText += `   • Inisial/Catatan: ${item.customNote}\n`;
+        itemsText += `   • Inisial/Catatan: ${safeString(item.customNote)}\n`;
       }
-      itemsText += `   • Jumlah: ${item.quantity} pcs x ${formatIDR(item.product.price)} = *${formatIDR(item.product.price * item.quantity)}*\n\n`;
+      itemsText += `   • Jumlah: ${qty} pcs x ${formatIDR(prodPrice)} = *${formatIDR(prodPrice * qty)}*\n\n`;
     });
 
-    const waNumber = settings?.whatsapp_number || '6282284901234';
-    const isTransfer = paymentMethod === 'bank_transfer';
-    const msg = `Halo ${settings?.brand_name || 'DISSOF.ID'} ♡\nSaya ingin memesan order *#${createdOrder.id}*:\n\n` +
+    const waNumber = safeString(settings?.whatsapp_number) || '6282284901234';
+    const isTransfer = safeMethod === 'bank_transfer';
+    const msg = `Halo ${safeString(settings?.brand_name) || 'DISSOF.ID'} ♡\nSaya ingin memesan order *#${createdOrder.id}*:\n\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `👤 *Data Pemesan:*\n` +
-      `• Nama: ${customerName}\n` +
-      `• No. HP / WA: ${customerPhone}\n` +
-      (customerAddress ? `• Alamat: ${customerAddress}\n` : '') +
+      `• Nama: ${safeCustName}\n` +
+      `• No. HP / WA: ${safeCustPhone}\n` +
+      (safeCustAddress ? `• Alamat: ${safeCustAddress}\n` : '') +
       `━━━━━━━━━━━━━━━━━━━\n\n` +
       `🛍️ *Daftar Item:*\n` +
       itemsText +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `💰 *Total:* *${formatIDR(cartSubtotal)}*\n` +
-      (orderNotes ? `📝 *Catatan:* ${orderNotes}\n` : '') +
+      (safeOrderNotes ? `📝 *Catatan:* ${safeOrderNotes}\n` : '') +
       `💳 *Metode:* ${isTransfer ? 'Transfer Bank / QRIS (Bukti Transfer Siap Dikirim)' : 'Checkout WhatsApp'}\n` +
       (isQuotaFallback ? `⚡ *Status:* Konfirmasi Langsung via WhatsApp\n` : '') +
       `━━━━━━━━━━━━━━━━━━━\n` +
@@ -284,7 +299,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     const waUrl = createWhatsAppLink(waNumber, msg);
 
     // Auto open WhatsApp on WhatsApp method OR when Quota Fallback is triggered
-    if (paymentMethod === 'whatsapp' || isQuotaFallback) {
+    if (safeMethod === 'whatsapp' || isQuotaFallback) {
       window.open(waUrl, '_blank');
     }
 
@@ -292,9 +307,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     setOrderSuccess({
       orderId: createdOrder.id,
       total: cartSubtotal,
-      paymentMethod: paymentMethod === 'bank_transfer' ? 'Transfer Bank / QRIS' : 'WhatsApp Checkout',
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      paymentMethod: safeMethod === 'bank_transfer' ? 'Transfer Bank / QRIS' : 'WhatsApp Checkout',
+      customerName: safeCustName,
+      customerPhone: safeCustPhone,
       isQuotaFallback,
       waUrl,
     });

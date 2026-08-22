@@ -34,11 +34,11 @@ export const ShopPage: React.FC<ShopPageProps> = ({
         if (p.is_visible === false) return false;
         if (selectedCategory !== 'all' && p.category_id !== selectedCategory) return false;
         if (inStockOnly && (p.is_sold_out || p.stock === 0)) return false;
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase();
-          const matchName = p.name.toLowerCase().includes(q);
-          const matchDesc = p.description?.toLowerCase().includes(q);
-          const matchTags = p.tags?.some((t) => t.toLowerCase().includes(q));
+        const q = String(searchQuery || '').trim().toLowerCase();
+        if (q) {
+          const matchName = String(p?.name || '').toLowerCase().includes(q);
+          const matchDesc = String(p?.description || '').toLowerCase().includes(q);
+          const matchTags = (p?.tags || []).some((t) => String(t || '').toLowerCase().includes(q));
           if (!matchName && !matchDesc && !matchTags) return false;
         }
         return true;

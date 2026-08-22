@@ -136,8 +136,11 @@ export function getImageSizeInKB(dataOrUrl: string): number {
  */
 export function isQuotaExceededError(error: unknown): boolean {
   if (!error) return false;
-  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  const code = (error as any)?.code?.toLowerCase() || '';
+  const msg = (error instanceof Error ? error.message : typeof error === 'string' ? error : String(error || '')).toLowerCase();
+  const rawCode = (error as any)?.code;
+  const code = (typeof rawCode === 'string' ? rawCode : String(rawCode || '')).toLowerCase();
+  const rawName = (error as any)?.name;
+  const name = typeof rawName === 'string' ? rawName : String(rawName || '');
 
   return (
     code.includes('quota') ||
@@ -148,7 +151,7 @@ export function isQuotaExceededError(error: unknown): boolean {
     msg.includes('storage full') ||
     msg.includes('quotaexceedederror') ||
     msg.includes('ns_error_dom_quota_reached') ||
-    (error as any)?.name === 'QuotaExceededError'
+    name === 'QuotaExceededError'
   );
 }
 

@@ -101,14 +101,14 @@ export const AdminCustomRequestsPage: React.FC = () => {
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+      const q = String(searchQuery || '').trim().toLowerCase();
+      if (q) {
         return (
-          r.customer_name.toLowerCase().includes(q) ||
-          r.customer_whatsapp.includes(q) ||
-          r.accessory_type.toLowerCase().includes(q) ||
-          r.custom_initials?.toLowerCase().includes(q) ||
-          r.special_notes?.toLowerCase().includes(q)
+          String(r?.customer_name || '').toLowerCase().includes(q) ||
+          String(r?.customer_whatsapp || '').includes(q) ||
+          String(r?.accessory_type || '').toLowerCase().includes(q) ||
+          String(r?.custom_initials || '').toLowerCase().includes(q) ||
+          String(r?.special_notes || '').toLowerCase().includes(q)
         );
       }
       return true;

@@ -386,13 +386,13 @@ export const AdminProductsPage: React.FC = () => {
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       if (categoryFilter !== 'all' && p.category_id !== categoryFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+      const q = String(searchQuery || '').trim().toLowerCase();
+      if (q) {
         return (
-          p.name.toLowerCase().includes(q) ||
-          p.description?.toLowerCase().includes(q) ||
-          p.category_name?.toLowerCase().includes(q) ||
-          (p.tags && p.tags.some((t) => t.toLowerCase().includes(q)))
+          String(p?.name || '').toLowerCase().includes(q) ||
+          String(p?.description || '').toLowerCase().includes(q) ||
+          String(p?.category_name || '').toLowerCase().includes(q) ||
+          (p?.tags && (p.tags || []).some((t) => String(t || '').toLowerCase().includes(q)))
         );
       }
       return true;

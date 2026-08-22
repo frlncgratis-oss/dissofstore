@@ -30,9 +30,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
   const featuredProducts = bestSellers.length > 0 ? bestSellers : products.slice(0, 4);
 
   const getCategoryImage = (cat: Category) => {
-    if (cat.image && cat.image.trim()) return cat.image;
-    const slug = (cat.slug || cat.name).toLowerCase();
-    const matched = DEFAULT_CATEGORIES.find((d) => d.id === cat.id || d.slug === slug || slug.includes(d.id));
+    if (cat?.image && String(cat.image).trim()) return cat.image;
+    const slug = String(cat?.slug || cat?.name || '').toLowerCase();
+    const matched = DEFAULT_CATEGORIES.find((d) => d.id === cat?.id || d.slug === slug || (slug && slug.includes(d.id)));
     return matched?.image || DEFAULT_CATEGORIES[0].image;
   };
 

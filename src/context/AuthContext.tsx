@@ -76,8 +76,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (credentials: { username: string; password: string }) => {
     setIsLoading(true);
     try {
-      const inputUser = credentials.username.trim().toLowerCase();
-      const inputPass = credentials.password.trim();
+      const inputUser = String(credentials?.username || '').trim().toLowerCase();
+      const inputPass = String(credentials?.password || '').trim();
 
       // Retrieve current valid password from 'adminPassword' in LocalStorage, or fallback to default 'dissof2026!'
       const validPassword = localStorage.getItem(ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASS;

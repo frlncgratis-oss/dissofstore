@@ -5,6 +5,29 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Safely converts any unknown value to a string. Returns empty string for null/undefined.
+ */
+export function safeString(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') return val;
+  return String(val);
+}
+
+/**
+ * Safely converts any unknown value to lowercase string without throwing TypeError.
+ */
+export function safeToLowerCase(val: unknown): string {
+  return safeString(val).toLowerCase();
+}
+
+/**
+ * Safely trims any unknown value as a string without throwing TypeError.
+ */
+export function safeTrim(val: unknown): string {
+  return safeString(val).trim();
+}
+
 export function formatIDR(amount: number): string {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',

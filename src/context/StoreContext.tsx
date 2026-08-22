@@ -50,7 +50,10 @@ import {
   idbSaveAll,
   idbGetAll,
   idbDeleteItem,
-  isQuotaExceededError
+  isQuotaExceededError,
+  safeString,
+  safeTrim,
+  safeToLowerCase
 } from '../lib/utils';
 import confetti from 'canvas-confetti';
 
@@ -256,10 +259,11 @@ const SAMPLE_DUMMY_ORDER_IDS = new Set([
   'ORD-89205'
 ]);
 
-export const isSampleDummyOrderId = (id?: string): boolean => {
-  if (!id) return false;
-  if (SAMPLE_DUMMY_ORDER_IDS.has(id)) return true;
-  if (id.startsWith('ORD-892')) return true;
+export const isSampleDummyOrderId = (id?: unknown): boolean => {
+  const safeId = safeString(id);
+  if (!safeId) return false;
+  if (SAMPLE_DUMMY_ORDER_IDS.has(safeId)) return true;
+  if (safeId.startsWith('ORD-892')) return true;
   return false;
 };
 
@@ -816,13 +820,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Categories Online Sync
   const saveCategoryLocal = async (categoryName: string, categoryData?: Partial<Category>): Promise<Category> => {
-    const trimmed = categoryName.trim();
+    const trimmed = safeTrim(categoryName);
     if (!trimmed) {
       throw new Error('Nama kategori tidak boleh kosong.');
     }
 
-    const slug = (categoryData?.slug || trimmed).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const existing = categories.find((c) => c.name.toLowerCase() === trimmed.toLowerCase() || c.slug === slug);
+    const slug = safeToLowerCase(categoryData?.slug || trimmed).replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const existing = categories.find((c) => safeToLowerCase(c.name) === safeToLowerCase(trimmed) || safeToLowerCase(c.slug) === slug);
     if (existing) {
       return existing;
     }
@@ -947,8 +951,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       currentProducts[targetIndex] = updatedProduct;
     } else {
-      const slug = (productData.name || 'product')
-        .toLowerCase()
+      const slug = safeToLowerCase(productData.name || 'product')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '');
 
@@ -956,9 +959,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       updatedProduct = {
         id: newId,
-        name: productData.name || 'Produk Baru',
-        slug: `${slug}-${Math.floor(Math.random() * 1000)}`,
-        category_id: productData.category_id || 'bracelets',
+        name: safeString(productData.name) || 'Produk Baru',
+        slug: `${slug || 'prod'}-${Math.floor(Math.random() * 1000)}`,
+        category_id: safeString(productData.category_id) || 'bracelets',
         category_name: categoryName,
         price: Number(productData.price) || 0,
         original_price: productData.original_price ? Number(productData.original_price) : undefined,
@@ -1036,33 +1039,40 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const orderItems = cart.map((item) => {
       const itm: Record<string, any> = {
-        product_id: item.product.id,
-        product_name: item.product.name,
-        price: item.product.price,
-        quantity: item.quantity,
+        product_id: safeString(item?.product?.id || 'prod-custom'),
+        product_name: safeString(item?.product?.name || 'Aksesoris DISSOF'),
+        price: Number(item?.product?.price) || 0,
+        quantity: Number(item?.quantity) || 1,
       };
-      if (item.selectedVariant) itm.variant = item.selectedVariant;
-      if (item.customNote) itm.custom_note = item.customNote;
-      if (item.product.images?.[0]) itm.image = item.product.images[0];
+      if (item?.selectedVariant) itm.variant = safeString(item.selectedVariant);
+      if (item?.customNote) itm.custom_note = safeString(item.customNote);
+      if (item?.product?.images?.[0]) itm.image = safeString(item.product.images[0]);
       return itm;
     });
 
-    const proofVal = orderData.payment_proof || orderData.payment_proof_url || '';
+    const proofVal = safeString(orderData.payment_proof || orderData.payment_proof_url || '');
     const newOrderId = `ORD-${Date.now().toString().slice(-6)}`;
+    const safeCustName = safeTrim(orderData.customer_name);
+    const safeCustPhone = safeTrim(orderData.customer_whatsapp);
+    const safeCustAddress = safeTrim(orderData.customer_address) || 'Dumai (Ambil di tempat / Kirim)';
+    const safeOrderNotes = safeTrim(orderData.order_notes || (orderData as any).notes || '');
+    const rawMethod = safeString(orderData.payment_method || 'bank_transfer');
+    const safePaymentMethod: Order['payment_method'] = rawMethod === 'whatsapp' ? 'whatsapp' : rawMethod === 'qris' ? 'qris' : 'bank_transfer';
+
     const newOrder: Order = {
       id: newOrderId,
-      customer_name: orderData.customer_name.trim(),
-      customer_whatsapp: orderData.customer_whatsapp.trim(),
-      customer_address: orderData.customer_address?.trim() || 'Dumai (Ambil di tempat / Kirim)',
+      customer_name: safeCustName,
+      customer_whatsapp: safeCustPhone,
+      customer_address: safeCustAddress,
       items: orderItems as any,
-      subtotal: cartSubtotal,
-      total: cartSubtotal,
-      order_notes: orderData.order_notes?.trim() || '',
-      notes: orderData.order_notes?.trim() || '',
+      subtotal: Number(cartSubtotal) || 0,
+      total: Number(cartSubtotal) || 0,
+      order_notes: safeOrderNotes,
+      notes: safeOrderNotes,
       source: 'online',
-      payment_method: orderData.payment_method,
-      payment_proof: proofVal,
-      payment_proof_url: proofVal,
+      payment_method: safePaymentMethod,
+      payment_proof: proofVal || undefined,
+      payment_proof_url: proofVal || undefined,
       status: 'Pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

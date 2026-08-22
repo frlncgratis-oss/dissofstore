@@ -16,6 +16,7 @@ import { api } from '../../lib/api';
 import { EventItem } from '../../types';
 import { formatDate } from '../../lib/utils';
 import { ImageWithFallback, FALLBACK_EVENT_IMAGE } from '../../components/common/ImageWithFallback';
+import { UniversalImageUploader } from '../../components/common/UniversalImageUploader';
 
 export const AdminEventsPage: React.FC = () => {
   const { events, refreshData } = useStore();
@@ -377,21 +378,15 @@ export const AdminEventsPage: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-[#2D2D2D]">Foto Poster Event</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    placeholder="URL Poster..."
-                    value={posterUrl}
-                    onChange={(e) => setPosterUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-black/10 bg-[#F9F7F2] text-xs focus:outline-none"
-                  />
-                  <label className="px-3 py-2 rounded-xl bg-[#2D2D2D] text-white font-bold text-xs cursor-pointer flex items-center gap-1 shrink-0">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload</span>
-                    <input type="file" accept="image/*" onChange={handlePosterUpload} className="hidden" />
-                  </label>
-                </div>
+                <UniversalImageUploader
+                  label="Foto Poster / Banner Event"
+                  sublabel="Foto suasana booth pop-up atau poster jadwal bazaar Dumai."
+                  currentImage={posterUrl}
+                  onImageChange={(data) => setPosterUrl(data)}
+                  onImageRemove={() => setPosterUrl('')}
+                  aspectRatioLabel="Rasio 16:9 atau 4:3"
+                  previewHeightClass="h-40"
+                />
               </div>
 
               <div className="pt-4 flex items-center justify-end gap-2 border-t border-black/5">

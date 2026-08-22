@@ -139,7 +139,11 @@ export interface SiteSettings {
   about_story: string;
   footer_text: string;
   logo_url?: string;
+  favicon_url?: string;
   hero_banner_url?: string;
+  popup_banner_image?: string;
+  highlight_images?: string[];
+  instagram_feed_images?: string[];
   background?: StoreBackground;
   currency_symbol?: string;
   banner_image?: string;

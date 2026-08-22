@@ -1,306 +1,215 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Palette, 
   Upload, 
   Trash2, 
-  Sparkles, 
-  Check, 
-  Image as ImageIcon, 
-  RotateCcw, 
+  Crop, 
   Eye, 
-  Layers, 
-  ExternalLink,
-  ShieldCheck,
-  AlertCircle,
-  Crop
+  Check, 
+  AlertCircle, 
+  Sparkles, 
+  Image as ImageIcon, 
+  Layout, 
+  Sliders, 
+  ShieldCheck, 
+  RefreshCw,
+  Layers,
+  Camera,
+  Instagram,
+  MapPin,
+  Calendar,
+  MessageCircle,
+  Megaphone,
+  Radio,
+  FileText,
+  HelpCircle
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { compressImageFile, hardCompressImage } from '../../lib/utils';
+import { SiteSettings, StoreBackground } from '../../types';
+import { 
+  hardCompressImage, 
+  getImageSizeInKB, 
+  createWhatsAppLink 
+} from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 import { ImageCropModal } from '../../components/common/ImageCropModal';
+import { UniversalImageUploader } from '../../components/common/UniversalImageUploader';
 
-const PRESET_LOGOS = [
-  {
-    name: 'Heart Ribbon Script',
-    url: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=400&auto=format&fit=crop&q=80',
-    desc: 'Logo feminin dengan aksen pita & pastel pink'
-  },
-  {
-    name: 'Sparkle Beads Badge',
-    url: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=400&auto=format&fit=crop&q=80',
-    desc: 'Badge aksesoris beads minimalis & estetik'
-  },
-  {
-    name: 'Pastel Daisy Emblem',
-    url: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=400&auto=format&fit=crop&q=80',
-    desc: 'Emblem bunga daisy ceria khas DISSOF'
-  }
-];
-
-const PRESET_BANNERS = [
-  {
-    name: 'Strawberry & Pastel Beads (Default)',
-    url: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=900&auto=format&fit=crop&q=80',
-    tag: 'Best Seller Series'
-  },
-  {
-    name: 'Soft Pearl & Crystal Charms',
-    url: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=900&auto=format&fit=crop&q=80',
-    tag: 'Pearl Collection'
-  },
-  {
-    name: 'Daisy Flower & Ribbon Bracelets',
-    url: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=900&auto=format&fit=crop&q=80',
-    tag: 'Spring Blooms'
-  },
-  {
-    name: 'Sweet Candy Pastel Charm Stack',
-    url: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=900&auto=format&fit=crop&q=80',
-    tag: 'Pastel Dream'
-  }
-];
-
-const PRESET_BG_COLORS = [
-  { name: 'Krem Pastel (Default)', color: '#F9F7F2', desc: 'Warna bawaan estetik khas DISSOF.ID' },
-  { name: 'Soft Blush Pink', color: '#FFF0F3', desc: 'Sentuhan manis feminin lembut' },
-  { name: 'Fairy Lavender', color: '#F7F2FA', desc: 'Nuansa ungu pastel magis' },
-  { name: 'Minty Blossom', color: '#F0FAF7', desc: 'Segar dan menenangkan' },
-  { name: 'Pure Soft Ivory', color: '#FCFBF7', desc: 'Putih gading minimalis & bersih' },
-  { name: 'Warm Oat & Sand', color: '#F5EFEB', desc: 'Hangat bernuansa earthy' },
-  { name: 'Peach Ribbon Glow', color: '#FFEFEF', desc: 'Aksen peach pastel berkilau' },
-  { name: 'Cloudy Sky Pastel', color: '#F0F6FA', desc: 'Biru langit pastel cerah' },
-];
-
-const PRESET_BG_PATTERNS = [
-  {
-    name: 'Soft Pink Bokeh & Sparkles',
-    url: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=1200&auto=format&fit=crop&q=80',
-    tag: 'Sparkle Texture'
-  },
-  {
-    name: 'Delicate Pastel Flora',
-    url: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1200&auto=format&fit=crop&q=80',
-    tag: 'Floral Background'
-  },
-  {
-    name: 'Daisy Garden Dream',
-    url: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&auto=format&fit=crop&q=80',
-    tag: 'Garden Pattern'
-  }
+const COLOR_PRESETS = [
+  { name: 'Krem Pastel (Bawaan)', hex: '#F9F7F2', border: 'border-amber-200' },
+  { name: 'Soft Blush Pink', hex: '#FFF5F6', border: 'border-pink-200' },
+  { name: 'Pure White (Bersih)', hex: '#FFFFFF', border: 'border-gray-200' },
+  { name: 'Warm Cream Latte', hex: '#FAF5EE', border: 'border-orange-200' },
+  { name: 'Light Rose Marshmallow', hex: '#FDF2F4', border: 'border-rose-200' },
+  { name: 'Soft Sage Matcha', hex: '#F4F7F4', border: 'border-emerald-200' },
+  { name: 'Lavender Mist', hex: '#F7F4FA', border: 'border-purple-200' },
+  { name: 'Pale Peach Butter', hex: '#FFF8F2', border: 'border-amber-200' },
 ];
 
 export const AdminBrandingPage: React.FC = () => {
   const { 
     settings, 
+    saveSettingsLocal, 
     storeLogo, 
-    storeHeroBanner, 
-    storeBackground,
     saveStoreLogo, 
-    removeStoreLogo, 
-    saveHeroBanner, 
+    removeStoreLogo,
+    storeHeroBanner,
+    saveHeroBanner,
     removeHeroBanner,
+    storeBackground,
     saveStoreBackground,
-    resetStoreBackground
+    resetStoreBackground,
+    isOnlineSynced
   } = useStore();
 
-  const brandName = settings?.brand_name || 'DISSOF.ID';
-  const tagline = settings?.tagline || 'everything is heartmade♡';
+  const [activeTab, setActiveTab] = useState<'media' | 'content' | 'background'>('media');
+  
+  // Real-time Text State
+  const [brandName, setBrandName] = useState(settings?.brand_name || 'DISSOF.ID');
+  const [tagline, setTagline] = useState(settings?.tagline || 'everything is heartmade♡');
+  const [subTagline, setSubTagline] = useState(settings?.sub_tagline || 'handmade accessories & little treasures');
+  const [announcementBanner, setAnnouncementBanner] = useState(
+    settings?.announcement_banner || '✨ FREE GIFT BOX & POUCH UNTUK SETIAP PEMBELIAN ♡ | BISA CUSTOM NAMA & INISIAL'
+  );
+  const [instagram, setInstagram] = useState(settings?.instagram || '@dissof.id');
+  const [whatsappNumber, setWhatsappNumber] = useState(settings?.whatsapp_number || '6282284901234');
+  const [location, setLocation] = useState(settings?.location || 'Dumai, Riau');
+  const [offlineSpot, setOfflineSpot] = useState(settings?.offline_spot || 'Dumai Pop-Up Store / Bazaars');
+  const [offlineSchedule, setOfflineSchedule] = useState(settings?.offline_schedule || 'Setiap Sabtu & Minggu Malam (19.00 - 23.00 WIB)');
+  const [aboutStory, setAboutStory] = useState(
+    settings?.about_story || 'DISSOF.ID adalah UMKM handmade accessories lokal dari Dumai yang merangkai manik-manik indah secara manual dengan cinta.'
+  );
+  const [footerText, setFooterText] = useState(
+    settings?.footer_text || 'everything is heartmade♡ Crafted with love in Dumai, Indonesia.'
+  );
 
-  const logoFileInputRef = useRef<HTMLInputElement>(null);
-  const bannerFileInputRef = useRef<HTMLInputElement>(null);
-  const bgFileInputRef = useRef<HTMLInputElement>(null);
+  // Background states
+  const [selectedColor, setSelectedColor] = useState<string>(storeBackground?.value || '#F9F7F2');
+  const [bgMode, setBgMode] = useState<'cover' | 'repeat' | 'fixed'>(storeBackground?.mode || 'cover');
 
-  const [logoInputUrl, setLogoInputUrl] = useState('');
-  const [bannerInputUrl, setBannerInputUrl] = useState('');
-  const [bgInputUrl, setBgInputUrl] = useState('');
-
-  // Background color state for color picker
-  const [selectedColor, setSelectedColor] = useState<string>(() => {
-    return storeBackground?.type === 'color' && storeBackground?.value ? storeBackground.value : '#F9F7F2';
-  });
-
-  const [bgMode, setBgMode] = useState<'cover' | 'repeat' | 'fixed'>(() => storeBackground?.mode || 'cover');
-
-  const [isProcessingLogo, setIsProcessingLogo] = useState(false);
-  const [isProcessingBanner, setIsProcessingBanner] = useState(false);
-  const [isProcessingBg, setIsProcessingBg] = useState(false);
-
-  // Crop Modal state
-  const [cropModalOpen, setCropModalOpen] = useState(false);
-  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
-  const [cropTargetType, setCropTargetType] = useState<'logo' | 'banner' | 'background' | null>(null);
-  const [cropAspect, setCropAspect] = useState<number | undefined>(1 / 1);
-
+  // Status & Feedback
+  const [isSavingText, setIsSavingText] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (settings) {
+      if (settings.brand_name) setBrandName(settings.brand_name);
+      if (settings.tagline) setTagline(settings.tagline);
+      if (settings.sub_tagline) setSubTagline(settings.sub_tagline);
+      if (settings.announcement_banner) setAnnouncementBanner(settings.announcement_banner);
+      if (settings.instagram) setInstagram(settings.instagram);
+      if (settings.whatsapp_number) setWhatsappNumber(settings.whatsapp_number);
+      if (settings.location) setLocation(settings.location);
+      if (settings.offline_spot) setOfflineSpot(settings.offline_spot);
+      if (settings.offline_schedule) setOfflineSchedule(settings.offline_schedule);
+      if (settings.about_story) setAboutStory(settings.about_story);
+      if (settings.footer_text) setFooterText(settings.footer_text);
+    }
+  }, [settings]);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToastMessage({ type, text });
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const openCropForLogo = (imageSrc: string) => {
-    setCropImageSrc(imageSrc);
-    setCropTargetType('logo');
-    setCropAspect(1 / 1);
-    setCropModalOpen(true);
-  };
-
-  const openCropForBanner = (imageSrc: string) => {
-    setCropImageSrc(imageSrc);
-    setCropTargetType('banner');
-    setCropAspect(4 / 5);
-    setCropModalOpen(true);
-  };
-
-  const openCropForBackground = (imageSrc: string) => {
-    setCropImageSrc(imageSrc);
-    setCropTargetType('background');
-    setCropAspect(16 / 9);
-    setCropModalOpen(true);
-  };
-
-  const handleCropComplete = async (croppedBase64: string) => {
+  // --- SAVE TEXT SETTINGS ---
+  const handleSaveTextSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingText(true);
     try {
-      const optimizedBase64 = await hardCompressImage(croppedBase64, 800, 0.6, 195);
-      if (cropTargetType === 'logo') {
-        setIsProcessingLogo(true);
-        await saveStoreLogo(optimizedBase64);
-        showToast('success', 'Logo Header berhasil di-crop & dikompres (< 200 KB)!');
-      } else if (cropTargetType === 'banner') {
-        setIsProcessingBanner(true);
-        await saveHeroBanner(optimizedBase64);
-        showToast('success', 'Banner Hero Card berhasil di-crop & dikompres (< 200 KB)!');
-      } else if (cropTargetType === 'background') {
-        setIsProcessingBg(true);
-        await saveStoreBackground({ type: 'image', value: optimizedBase64, mode: bgMode });
-        showToast('success', 'Gambar Background berhasil di-crop & dikompres (< 200 KB)!');
-      }
+      await saveSettingsLocal({
+        brand_name: brandName.trim(),
+        tagline: tagline.trim(),
+        sub_tagline: subTagline.trim(),
+        announcement_banner: announcementBanner.trim(),
+        instagram: instagram.trim(),
+        whatsapp_number: whatsappNumber.trim(),
+        location: location.trim(),
+        offline_spot: offlineSpot.trim(),
+        offline_schedule: offlineSchedule.trim(),
+        about_story: aboutStory.trim(),
+        footer_text: footerText.trim(),
+      });
+      showToast('success', 'Pengaturan teks & pengumuman berhasil disimpan ke Firestore secara real-time!');
     } catch (err: any) {
-      showToast('error', err.message || 'Gagal menyimpan hasil crop.');
+      showToast('error', err.message || 'Gagal menyimpan pengaturan teks.');
     } finally {
-      setIsProcessingLogo(false);
-      setIsProcessingBanner(false);
-      setIsProcessingBg(false);
-      setCropModalOpen(false);
-      setCropImageSrc(null);
-      setCropTargetType(null);
+      setIsSavingText(false);
     }
   };
 
-  // --- LOGO HANDLERS ---
-  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result) {
-        openCropForLogo(reader.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
-    if (logoFileInputRef.current) logoFileInputRef.current.value = '';
-  };
-
-  const handleApplyLogoUrl = async () => {
-    if (!logoInputUrl.trim()) return;
-    setIsProcessingLogo(true);
-    try {
-      await saveStoreLogo(logoInputUrl.trim());
-      showToast('success', 'Logo Header dari URL berhasil disimpan!');
-      setLogoInputUrl('');
-    } catch (err: any) {
-      showToast('error', err.message || 'Gagal menyimpan URL logo.');
-    } finally {
-      setIsProcessingLogo(false);
-    }
-  };
-
-  const handleRemoveLogo = async () => {
-    if (window.confirm('Yakin ingin menghapus logo header? Tampilan navbar akan kembali menggunakan teks default "DISSOF.ID".')) {
+  // --- MEDIA HANDLERS ---
+  const handleUpdateLogo = async (compressedData: string) => {
+    if (!compressedData) {
       await removeStoreLogo();
-      showToast('success', 'Logo Header telah dihapus. Navbar kembali menggunakan teks default.');
+      showToast('success', 'Logo toko telah dihapus (Navbar kembali ke teks default).');
+    } else {
+      await saveStoreLogo(compressedData);
+      showToast('success', 'Logo toko berhasil diperbarui & disimpan ke Firestore!');
     }
   };
 
-  // --- BANNER HANDLERS ---
-  const handleBannerFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result) {
-        openCropForBanner(reader.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
-    if (bannerFileInputRef.current) bannerFileInputRef.current.value = '';
-  };
-
-  const handleApplyBannerUrl = async () => {
-    if (!bannerInputUrl.trim()) return;
-    setIsProcessingBanner(true);
-    try {
-      await saveHeroBanner(bannerInputUrl.trim());
-      showToast('success', 'Gambar Hero/Banner dari URL berhasil disimpan!');
-      setBannerInputUrl('');
-    } catch (err: any) {
-      showToast('error', err.message || 'Gagal menyimpan URL banner.');
-    } finally {
-      setIsProcessingBanner(false);
-    }
-  };
-
-  const handleRemoveBanner = async () => {
-    if (window.confirm('Yakin ingin menghapus gambar banner utama? Halaman depan akan kembali menggunakan foto default estetik.')) {
+  const handleUpdateHeroBanner = async (compressedData: string) => {
+    if (!compressedData) {
       await removeHeroBanner();
-      showToast('success', 'Banner utama telah dihapus. Card hero kembali menggunakan foto default.');
+      showToast('success', 'Hero banner dihapus (kembali ke foto default).');
+    } else {
+      await saveHeroBanner(compressedData);
+      showToast('success', 'Hero banner utama berhasil diperbarui & disimpan ke Firestore!');
     }
   };
 
-  const defaultHeroImage = 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=900&auto=format&fit=crop&q=80';
-  const activeHeroImage = storeHeroBanner || defaultHeroImage;
+  const handleUpdatePopupBanner = async (compressedData: string) => {
+    await saveSettingsLocal({ popup_banner_image: compressedData || undefined });
+    showToast('success', 'Foto/Banner Event Pop-Up Store berhasil diperbarui!');
+  };
+
+  const handleUpdateHighlightImage = async (index: number, compressedData: string) => {
+    const currentHighlights = settings?.highlight_images && settings.highlight_images.length > 0
+      ? [...settings.highlight_images]
+      : [
+          'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
+        ];
+    
+    currentHighlights[index] = compressedData;
+    await saveSettingsLocal({ highlight_images: currentHighlights });
+    showToast('success', `Foto Highlight Handmade #${index + 1} berhasil diperbarui!`);
+  };
+
+  const handleUpdateInstagramImage = async (index: number, compressedData: string) => {
+    const currentFeeds = settings?.instagram_feed_images && settings.instagram_feed_images.length === 4
+      ? [...settings.instagram_feed_images]
+      : [
+          'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
+        ];
+
+    currentFeeds[index] = compressedData;
+    await saveSettingsLocal({ instagram_feed_images: currentFeeds });
+    showToast('success', `Foto Instagram Feed Kotak #${index + 1} berhasil diperbarui!`);
+  };
 
   // --- BACKGROUND HANDLERS ---
   const handleApplyColor = async (colorHex: string) => {
     setSelectedColor(colorHex);
-    setIsProcessingBg(true);
     try {
       await saveStoreBackground({ type: 'color', value: colorHex, mode: 'cover' });
-      showToast('success', `Warna latar belakang (${colorHex}) berhasil diterapkan dan disimpan ke LocalStorage (key: store_background)!`);
+      showToast('success', `Warna latar belakang (${colorHex}) berhasil diterapkan!`);
     } catch (err: any) {
       showToast('error', err.message || 'Gagal menyimpan warna background.');
-    } finally {
-      setIsProcessingBg(false);
     }
   };
 
-  const handleBgFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result) {
-        openCropForBackground(reader.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
-    if (bgFileInputRef.current) bgFileInputRef.current.value = '';
-  };
-
-  const handleApplyBgUrl = async () => {
-    if (!bgInputUrl.trim()) return;
-    setIsProcessingBg(true);
-    try {
-      await saveStoreBackground({ type: 'image', value: bgInputUrl.trim(), mode: bgMode });
-      showToast('success', 'Gambar latar belakang dari URL berhasil disimpan!');
-      setBgInputUrl('');
-    } catch (err: any) {
-      showToast('error', err.message || 'Gagal menyimpan URL gambar background.');
-    } finally {
-      setIsProcessingBg(false);
+  const handleBgFileUpload = async (compressedData: string) => {
+    if (!compressedData) {
+      await resetStoreBackground();
+      showToast('success', 'Gambar latar belakang dihapus (kembali ke warna default).');
+    } else {
+      await saveStoreBackground({ type: 'image', value: compressedData, mode: bgMode });
+      showToast('success', 'Gambar pola background berhasil disimpan ke Firestore!');
     }
   };
 
@@ -308,17 +217,23 @@ export const AdminBrandingPage: React.FC = () => {
     setBgMode(newMode);
     if (storeBackground?.type === 'image') {
       await saveStoreBackground({ ...storeBackground, mode: newMode });
-      showToast('success', `Mode gambar latar belakang diubah menjadi "${newMode === 'repeat' ? 'Pola Berulang (Repeat Pattern)' : newMode === 'fixed' ? 'Parallax (Fixed Background)' : 'Penuh (Full Cover)'}"!`);
+      showToast('success', `Mode background diubah ke "${newMode}"`);
     }
   };
 
-  const handleResetDefaultBackground = async () => {
-    if (window.confirm('Kembalikan latar belakang website ke warna default (krem pastel #F9F7F2)?')) {
-      setSelectedColor('#F9F7F2');
-      await resetStoreBackground();
-      showToast('success', 'Latar belakang berhasil dikembalikan ke warna default (krem pastel #F9F7F2)!');
-    }
-  };
+  const highlightImages = settings?.highlight_images || [
+    'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
+  ];
+
+  const instagramImages = settings?.instagram_feed_images || [
+    'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
+  ];
+
+  const popupImage = settings?.popup_banner_image || 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=700&auto=format&fit=crop&q=80';
 
   return (
     <div className="space-y-8">
@@ -326,16 +241,21 @@ export const AdminBrandingPage: React.FC = () => {
       {/* Top Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-pink-100 pb-5">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-100/60 text-pink-700 text-xs font-bold mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-100/70 text-pink-700 text-xs font-bold mb-2">
             <Palette className="w-3.5 h-3.5" />
-            <span>Kustomisasi Tampilan & Identitas Toko</span>
+            <span>Dynamic Branding, Media & Content Editor</span>
           </div>
           <h1 className="font-playfair text-2xl sm:text-3xl font-bold text-[#2D2D2D]">
-            Pengaturan Toko / Branding ♡
+            Pengaturan Tampilan & Media ♡
           </h1>
-          <p className="text-xs text-[#7A6A61] mt-1 font-medium max-w-2xl">
-            Kelola Logo Header Navbar, Gambar Banner/Hero Card Utama, dan Latar Belakang (Warna & Gambar Pattern) seluruh website. Perubahan langsung tersinkronisasi ke Database Online Firestore dan aktif secara real-time di semua HP & perangkat.
+          <p className="text-xs text-[#7A6A61] mt-1 font-medium max-w-3xl">
+            Pusat kendali seluruh foto, banner, running announcement bar, Instagram feed, info event bazaar Dumai, dan identitas toko. Semua perubahan langsung terhubung 100% ke Cloud Firestore secara instan di semua HP pembeli.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shrink-0 shadow-2xs">
+          <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
+          <span>Firestore onSnapshot Aktif</span>
         </div>
       </div>
 
@@ -357,700 +277,464 @@ export const AdminBrandingPage: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================
-          1. PENGATURAN LOGO HEADER
-          ======================================================== */}
-      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-pink-100 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                1
-              </span>
-              <h2 className="text-base sm:text-lg font-bold text-[#2E241E]">
-                Pengaturan Logo Header (Navbar Atas)
-              </h2>
-            </div>
-            <p className="text-xs text-[#7A6A61]">
-              Unggah logo kustom toko Anda. Jika kosong atau dihapus, navbar otomatis menampilkan teks default <strong className="text-pink-600">"{brandName}"</strong>.
-            </p>
-          </div>
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-pink-100 pb-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab('media')}
+          className={`px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'media'
+              ? 'bg-[#2D2D2D] text-white shadow-md'
+              : 'bg-white text-[#63534B] hover:bg-pink-50 border border-pink-100'
+          }`}
+        >
+          <ImageIcon className="w-4 h-4 text-pink-300" />
+          <span>1. Unggah Foto & Banner (Universal Uploader)</span>
+        </button>
 
-          <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-pink-50 text-pink-700 px-3 py-1 rounded-full border border-pink-200">
-            <ShieldCheck className="w-3.5 h-3.5 text-pink-600" />
-            <span>key: 'store_logo'</span>
-          </span>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('content')}
+          className={`px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'content'
+              ? 'bg-[#2D2D2D] text-white shadow-md'
+              : 'bg-white text-[#63534B] hover:bg-pink-50 border border-pink-100'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-pink-300" />
+          <span>2. Teks Toko & Running Announcement Bar</span>
+        </button>
 
-        {/* Live Preview Box */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-[#2E241E] flex items-center gap-1.5">
-            <Eye className="w-3.5 h-3.5 text-pink-500" />
-            <span>Pratinjau Tampilan Header Navbar:</span>
-          </label>
-          <div className="bg-[#F9F7F2] p-4 sm:p-6 rounded-2xl border-2 border-dashed border-pink-200 flex items-center justify-between shadow-2xs">
-            <div className="flex items-center gap-3">
-              {storeLogo ? (
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-2xl border border-pink-100 shadow-xs">
-                  <img
-                    src={storeLogo}
-                    alt="Logo Header Toko"
-                    className="h-10 sm:h-12 max-w-[180px] object-contain rounded-xl"
-                  />
-                  <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
-                    Logo Aktif ✓
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#2D2D2D] text-white flex items-center justify-center text-base font-bold shadow-xs">
-                    ♡
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-playfair text-xl sm:text-2xl font-bold tracking-tight text-[#2D2D2D]">
-                      {brandName}
-                    </span>
-                    <span className="text-[10px] text-[#A08C8C] uppercase tracking-widest font-semibold">
-                      {tagline}
-                    </span>
-                  </div>
-                  <span className="text-[10px] bg-gray-100 text-gray-600 font-bold px-2 py-0.5 rounded-full ml-2">
-                    Teks Default Aktif
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="hidden sm:flex items-center gap-2 text-[11px] text-[#7A6A61] font-semibold">
-              <span className="text-pink-600">HOME</span> • <span>SHOP</span> • <span>CUSTOM ORDER ♡</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons: Ubah Logo & Hapus Logo */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-          {/* File Upload Button */}
-          <div className="space-y-2">
-            <input
-              ref={logoFileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleLogoFileUpload}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => logoFileInputRef.current?.click()}
-                disabled={isProcessingLogo}
-                className="flex-1 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <Upload className="w-4 h-4" />
-                <span>{storeLogo ? 'Ubah Logo (Pilih File)' : 'Unggah Logo Header Baru'}</span>
-              </button>
-
-              {storeLogo && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openCropForLogo(storeLogo)}
-                    disabled={isProcessingLogo}
-                    className="px-3.5 py-3 rounded-2xl bg-pink-100/90 hover:bg-pink-200 text-pink-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs border border-pink-200"
-                    title="Crop & Sesuaikan Posisi Logo"
-                  >
-                    <Crop className="w-4 h-4 text-pink-600" />
-                    <span>Crop Logo ♡</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleRemoveLogo}
-                    disabled={isProcessingLogo}
-                    className="px-3.5 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                    title="Hapus Logo Header"
-                  >
-                    <Trash2 className="w-4 h-4 text-rose-600" />
-                    <span>Hapus</span>
-                  </button>
-                </>
-              )}
-            </div>
-            <p className="text-[10px] text-[#8C7D75]">
-              Mendukung PNG (transparan), JPG, atau WebP. Gambar otomatis dioptimasi agar hemat memori LocalStorage.
-            </p>
-          </div>
-
-          {/* URL Input */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input
-                type="url"
-                placeholder="Atau tempel link / URL logo gambar..."
-                value={logoInputUrl}
-                onChange={(e) => setLogoInputUrl(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 rounded-xl border border-pink-200 bg-white text-xs text-[#2E241E] focus:ring-1 focus:ring-pink-400 placeholder:text-[#A08C8C]"
-              />
-              <button
-                type="button"
-                onClick={handleApplyLogoUrl}
-                disabled={!logoInputUrl.trim() || isProcessingLogo}
-                className="px-4 py-2.5 rounded-xl bg-[#2D2D2D] text-white text-xs font-bold hover:bg-black transition-colors disabled:opacity-40 cursor-pointer"
-              >
-                Terapkan URL
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Preset Logos */}
-        <div className="pt-2 border-t border-pink-50 space-y-2.5">
-          <p className="text-[11px] font-bold text-[#7A6A61] uppercase tracking-wider">
-            Atau Gunakan Logo Preset Estetik (1-Klik):
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {PRESET_LOGOS.map((preset, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  saveStoreLogo(preset.url);
-                  showToast('success', `Logo "${preset.name}" berhasil diterapkan!`);
-                }}
-                className="p-3 rounded-2xl border border-pink-100 bg-pink-50/30 hover:bg-pink-50 hover:border-pink-300 transition-all text-left flex items-center gap-3 cursor-pointer group"
-              >
-                <img
-                  src={preset.url}
-                  alt={preset.name}
-                  className="w-10 h-10 rounded-xl object-cover border border-pink-200 group-hover:scale-105 transition-transform"
-                />
-                <div>
-                  <h4 className="font-bold text-xs text-[#2E241E] group-hover:text-pink-600">
-                    {preset.name}
-                  </h4>
-                  <p className="text-[10px] text-[#8C7D75] line-clamp-1">
-                    {preset.desc}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
+        <button
+          type="button"
+          onClick={() => setActiveTab('background')}
+          className={`px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'background'
+              ? 'bg-[#2D2D2D] text-white shadow-md'
+              : 'bg-white text-[#63534B] hover:bg-pink-50 border border-pink-100'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-pink-300" />
+          <span>3. Tema Warna & Pola Latar Belakang</span>
+        </button>
+      </div>
 
       {/* ========================================================
-          2. PENGATURAN GAMBAR BANNER / HERO CARD
+          TAB 1: UNIVERSAL MEDIA UPLOADER (ALL SECTIONS)
           ======================================================== */}
-      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-pink-100 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                2
-              </span>
-              <h2 className="text-base sm:text-lg font-bold text-[#2E241E]">
-                Pengaturan Gambar Banner / Hero Card Utama
-              </h2>
-            </div>
-            <p className="text-xs text-[#7A6A61]">
-              Foto card visual utama yang tampil di sebelah tombol "SHOP NOW" & "MAKE YOUR CUSTOM ♡" pada Beranda.
-            </p>
-          </div>
-
-          <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-pink-50 text-pink-700 px-3 py-1 rounded-full border border-pink-200">
-            <ShieldCheck className="w-3.5 h-3.5 text-pink-600" />
-            <span>key: 'store_hero_banner'</span>
-          </span>
-        </div>
-
-        {/* Hero Card Preview & Action Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+      {activeTab === 'media' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
           
-          {/* Left Hero Card Mockup Preview */}
-          <div className="lg:col-span-5">
-            <label className="text-xs font-bold text-[#2E241E] flex items-center gap-1.5 mb-2">
-              <Eye className="w-3.5 h-3.5 text-pink-500" />
-              <span>Pratinjau Hero Card Beranda:</span>
-            </label>
-
-            <div className="relative mx-auto max-w-xs rounded-3xl overflow-hidden border-4 border-pink-200 shadow-xl bg-pink-50 aspect-[4/5] group">
-              <ImageWithFallback
-                src={activeHeroImage}
-                alt="Banner Hero Card Preview"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              
-              {/* Top Floating Badge Mockup */}
-              <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-xl text-[10px] font-bold text-[#2E241E] shadow-sm flex items-center gap-1">
-                <span>✨</span>
-                <span>everything is heartmade ♡</span>
+          {/* Section A: Logo Header & Hero Promo */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* A1: Logo Header Navbar */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                    A
+                  </span>
+                  <h3 className="font-bold text-sm text-[#2E241E]">Logo Header Toko (Navbar)</h3>
+                </div>
+                <span className="text-[10px] text-gray-500 font-mono">Navbar Brand Logo</span>
               </div>
 
-              {/* Bottom Tag Mockup */}
-              <div className="absolute bottom-3 left-3 right-3 bg-white/95 backdrop-blur-md p-2.5 rounded-xl border border-pink-100 flex items-center justify-between shadow-md">
-                <div>
-                  <span className="text-[9px] uppercase font-bold text-pink-600">Heartmade Series</span>
-                  <h4 className="font-bold text-[11px] text-[#2E241E] truncate max-w-[140px]">Custom Beads DISSOF.ID</h4>
+              <UniversalImageUploader
+                label="Logo Header Toko"
+                sublabel="Akan tampil di navbar atas website. Jika dihapus, otomatis menampilkan teks nama toko."
+                currentImage={storeLogo}
+                onImageChange={handleUpdateLogo}
+                onImageRemove={() => handleUpdateLogo('')}
+                aspectRatioLabel="Rasio Bebas / Transparan PNG"
+                previewHeightClass="h-28"
+              />
+            </div>
+
+            {/* A2: Hero Banner / Promo Utama */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                    B
+                  </span>
+                  <h3 className="font-bold text-sm text-[#2E241E]">Hero Banner Promo Utama</h3>
                 </div>
-                <span className="font-extrabold text-xs text-pink-600">Rp 35.000</span>
+                <span className="text-[10px] text-gray-500 font-mono">Card Showcase Depan</span>
+              </div>
+
+              <UniversalImageUploader
+                label="Foto Banner Utama (Hero Card)"
+                sublabel="Foto highlight aksesoris besar di sebelah kanan headline halaman depan."
+                currentImage={storeHeroBanner}
+                onImageChange={handleUpdateHeroBanner}
+                onImageRemove={() => handleUpdateHeroBanner('')}
+                aspectRatioLabel="Rasio 4:5 atau 1:1"
+                previewHeightClass="h-44 sm:h-52"
+              />
+            </div>
+
+          </div>
+
+          {/* Section B: Info Event Pop-Up Store */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                  C
+                </span>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                    Section Info Event & Pop-Up Store (Banner / Foto Event Dumai)
+                  </h3>
+                  <p className="text-xs text-[#7A6A61]">Foto booth Car Free Night Soebrantas atau Bazaar Pop-Up di section "Find Us Offline ♡"</p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-2 text-center">
-              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                storeHeroBanner ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {storeHeroBanner ? '● Gambar Banner Kustom Aktif' : '○ Foto Default Aesthetic Digunakan'}
-              </span>
+            <UniversalImageUploader
+              label="Banner / Foto Booth Pop-Up Market"
+              sublabel="Foto suasana booth Dissof di CFN Soebrantas / event bazar Dumai."
+              currentImage={popupImage}
+              onImageChange={handleUpdatePopupBanner}
+              aspectRatioLabel="Rasio 16:9 atau 4:3"
+              previewHeightClass="h-48 sm:h-64"
+            />
+          </div>
+
+          {/* Section C: Highlight Aksesoris Handmade (2 Foto) */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                  D
+                </span>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                    Section Galeri / Highlight Aksesoris Handmade (2 Foto Craft)
+                  </h3>
+                  <p className="text-xs text-[#7A6A61]">Dua foto estetik di samping deskripsi "made with love, bead by bead ♡" di homepage</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <UniversalImageUploader
+                label="Foto Highlight Craft #1"
+                sublabel="Proses merangkai manik-manik / beaded collection"
+                currentImage={highlightImages[0]}
+                onImageChange={(data) => handleUpdateHighlightImage(0, data)}
+                aspectRatioLabel="Rasio 4:5 atau 1:1"
+                previewHeightClass="h-44 sm:h-48"
+              />
+
+              <UniversalImageUploader
+                label="Foto Highlight Craft #2"
+                sublabel="Detail liontin, charm, atau packaging estetik"
+                currentImage={highlightImages[1]}
+                onImageChange={(data) => handleUpdateHighlightImage(1, data)}
+                aspectRatioLabel="Rasio 4:5 atau 1:1"
+                previewHeightClass="h-44 sm:h-48"
+              />
             </div>
           </div>
 
-          {/* Right Upload & Controls */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="p-4 rounded-2xl bg-pink-50/50 border border-pink-100 space-y-2">
-              <h3 className="font-bold text-xs text-[#2E241E] flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-pink-500" />
-                <span>Upload Foto Banner Kustom Pilihan Anda</span>
-              </h3>
-              <p className="text-[11px] text-[#7A6A61] leading-relaxed">
-                Pilih foto produk terbaik, showcase gelang beads terbaru, atau foto photoshoot pop-up store. Foto akan ditampilkan secara proporsional dan tidak akan pernah broken.
-              </p>
-            </div>
-
-            {/* Hidden Input & Action Buttons */}
-            <input
-              ref={bannerFileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleBannerFileUpload}
-            />
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => bannerFileInputRef.current?.click()}
-                disabled={isProcessingBanner}
-                className="flex-1 min-w-[180px] px-5 py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white text-xs font-bold shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <Upload className="w-4 h-4" />
-                <span>{storeHeroBanner ? 'Ubah Banner (Upload)' : 'Unggah Gambar Banner Utama'}</span>
-              </button>
-
-              {storeHeroBanner && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openCropForBanner(storeHeroBanner)}
-                    disabled={isProcessingBanner}
-                    className="px-4 py-3.5 rounded-2xl bg-pink-100/90 hover:bg-pink-200 text-pink-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs border border-pink-200"
-                    title="Crop & Sesuaikan Posisi Banner"
-                  >
-                    <Crop className="w-4 h-4 text-pink-600" />
-                    <span>Crop Banner ♡</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleRemoveBanner}
-                    disabled={isProcessingBanner}
-                    className="px-4 py-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                  >
-                    <Trash2 className="w-4 h-4 text-rose-600" />
-                    <span>Hapus</span>
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* URL Input */}
-            <div className="pt-2 space-y-1.5">
-              <label className="text-[11px] font-bold text-[#7A6A61]">
-                Atau Masukkan URL / Link Gambar Eksternal:
-              </label>
+          {/* Section D: Instagram Feed (4 Kotak Foto Instagram) */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-pink-100 pb-3">
               <div className="flex items-center gap-2">
-                <input
-                  type="url"
-                  placeholder="https://images.unsplash.com/... atau link foto banner"
-                  value={bannerInputUrl}
-                  onChange={(e) => setBannerInputUrl(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-pink-200 bg-white text-xs text-[#2E241E] focus:ring-1 focus:ring-pink-400 placeholder:text-[#A08C8C]"
+                <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                  E
+                </span>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-[#2E241E] flex items-center gap-2">
+                    <span>Section Instagram Feed (4 Kotak Foto Instagram)</span>
+                    <Instagram className="w-4 h-4 text-pink-600" />
+                  </h3>
+                  <p className="text-xs text-[#7A6A61]">Unggah 4 foto katalog terbaru untuk grid Instagram @{instagram.replace('@', '')} di bagian bawah halaman depan</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {instagramImages.map((imgSrc, idx) => (
+                <UniversalImageUploader
+                  key={idx}
+                  label={`Kotak Instagram #${idx + 1}`}
+                  sublabel={`Foto grid ${idx + 1}`}
+                  currentImage={imgSrc}
+                  onImageChange={(data) => handleUpdateInstagramImage(idx, data)}
+                  aspectRatioLabel="Rasio 1:1 Persegi"
+                  previewHeightClass="h-36 sm:h-40"
                 />
-                <button
-                  type="button"
-                  onClick={handleApplyBannerUrl}
-                  disabled={!bannerInputUrl.trim() || isProcessingBanner}
-                  className="px-4 py-2.5 rounded-xl bg-[#2D2D2D] text-white text-xs font-bold hover:bg-black transition-colors disabled:opacity-40 cursor-pointer"
-                >
-                  Terapkan
-                </button>
-              </div>
+              ))}
             </div>
-
-            {/* Preset Aesthetic Banners */}
-            <div className="pt-3 border-t border-pink-100 space-y-2">
-              <p className="text-[11px] font-bold text-[#7A6A61] uppercase tracking-wider">
-                Pilih Preset Banner Estetik Bawaan:
-              </p>
-              <div className="grid grid-cols-2 gap-2.5">
-                {PRESET_BANNERS.map((banner, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      saveHeroBanner(banner.url);
-                      showToast('success', `Banner "${banner.name}" berhasil diterapkan!`);
-                    }}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                      activeHeroImage === banner.url
-                        ? 'border-pink-500 bg-pink-50/70 shadow-xs'
-                        : 'border-pink-100 bg-white hover:border-pink-300'
-                    }`}
-                  >
-                    <img
-                      src={banner.url}
-                      alt={banner.name}
-                      className="w-9 h-9 rounded-lg object-cover shrink-0"
-                    />
-                    <div className="overflow-hidden">
-                      <p className="text-[10px] font-bold text-[#2E241E] truncate">
-                        {banner.name}
-                      </p>
-                      <span className="text-[9px] text-pink-600 font-semibold">
-                        {banner.tag}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
           </div>
 
         </div>
-      </section>
+      )}
 
       {/* ========================================================
-          3. PENGATURAN LATAR BELAKANG WEBSITE (BACKGROUND)
+          TAB 2: REAL-TIME TEXT & CONTENT EDITOR
           ======================================================== */}
-      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-pink-100 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                3
-              </span>
-              <h2 className="text-base sm:text-lg font-bold text-[#2E241E]">
-                Pengaturan Latar Belakang Website (Background)
-              </h2>
+      {activeTab === 'content' && (
+        <form onSubmit={handleSaveTextSettings} className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* 1. Running Announcement Bar */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 border-b border-pink-100 pb-3">
+              <Megaphone className="w-5 h-5 text-pink-500" />
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                  Running Announcement Bar (Pengumuman Paling Atas di Header)
+                </h3>
+                <p className="text-xs text-[#7A6A61]">Banner strip hitam di atas navbar yang berjalan/tampil di seluruh halaman</p>
+              </div>
             </div>
-            <p className="text-xs text-[#7A6A61]">
-              Sesuaikan warna atau gambar pattern latar belakang untuk seluruh halaman toko (Beranda, Katalog, Detail Produk, Keranjang, dll).
-            </p>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[#2E241E]">Teks Pengumuman Banner:</label>
+              <input
+                type="text"
+                required
+                value={announcementBanner}
+                onChange={(e) => setAnnouncementBanner(e.target.value)}
+                placeholder="Contoh: ✨ FREE GIFT BOX & POUCH UNTUK SETIAP PEMBELIAN ♡ | BISA CUSTOM NAMA & INISIAL"
+                className="w-full px-4 py-3 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white transition-all"
+              />
+              <p className="text-[11px] text-gray-500">
+                Gunakan emoji dan teks menarik untuk mengumumkan promo gratis ongkir, bazaar akhir pekan, atau free gift.
+              </p>
+            </div>
           </div>
 
-          <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-pink-50 text-pink-700 px-3 py-1 rounded-full border border-pink-200">
-            <ShieldCheck className="w-3.5 h-3.5 text-pink-600" />
-            <span>key: 'store_background'</span>
-          </span>
-        </div>
+          {/* 2. Informasi Brand & Kontak */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 border-b border-pink-100 pb-3">
+              <Sparkles className="w-5 h-5 text-pink-500" />
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                  Identitas Brand &amp; Kontak Resmi
+                </h3>
+                <p className="text-xs text-[#7A6A61]">Nama brand, tagline estetik, WhatsApp, dan username Instagram</p>
+              </div>
+            </div>
 
-        {/* Live Preview & Status Box */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <label className="text-xs font-bold text-[#2E241E] flex items-center gap-1.5">
-              <Eye className="w-3.5 h-3.5 text-pink-500" />
-              <span>Pratinjau Latar Belakang Aktif:</span>
-            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#2E241E]">Nama Brand / Toko:</label>
+                <input
+                  type="text"
+                  required
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+                />
+              </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#2E241E]">Tagline Brand (Huruf Kecil Estetik):</label>
+                <input
+                  type="text"
+                  required
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="everything is heartmade♡"
+                  className="w-full px-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#2E241E]">Username &amp; Link Instagram:</label>
+                <div className="relative">
+                  <Instagram className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-pink-500" />
+                  <input
+                    type="text"
+                    required
+                    value={instagram}
+                    onChange={(e) => setInstagram(e.target.value)}
+                    placeholder="@dissof.id"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#2E241E]">No. WhatsApp Admin (Format 62... / 08...):</label>
+                <div className="relative">
+                  <MessageCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-600" />
+                  <input
+                    type="text"
+                    required
+                    value={whatsappNumber}
+                    onChange={(e) => setWhatsappNumber(e.target.value)}
+                    placeholder="6282284901234"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Pop-Up Store Dumai & Deskripsi Toko */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 border-b border-pink-100 pb-3">
+              <MapPin className="w-5 h-5 text-pink-500" />
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                  Lokasi Pop-Up Bazaar &amp; Cerita Brand
+                </h3>
+                <p className="text-xs text-[#7A6A61]">Jadwal offline booth dan teks cerita handmade</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#2E241E]">Nama Spot Pop-Up Offline:</label>
+                <input
+                  type="text"
+                  value={offlineSpot}
+                  onChange={(e) => setOfflineSpot(e.target.value)}
+                  placeholder="Dumai Pop-Up Store / Bazaars"
+                  className="w-full px-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#2E241E]">Jadwal Buka Booth Pop-Up:</label>
+                <input
+                  type="text"
+                  value={offlineSchedule}
+                  onChange={(e) => setOfflineSchedule(e.target.value)}
+                  placeholder="Setiap Sabtu & Minggu Malam (19.00 - 23.00 WIB)"
+                  className="w-full px-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#2E241E]">Kisah / Filosofi Brand (About Story):</label>
+              <textarea
+                rows={3}
+                value={aboutStory}
+                onChange={(e) => setAboutStory(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#2E241E]">Teks Catatan Kaki (Footer):</label>
+              <input
+                type="text"
+                value={footerText}
+                onChange={(e) => setFooterText(e.target.value)}
+                placeholder="everything is heartmade♡ Crafted with love in Dumai, Indonesia."
+                className="w-full px-4 py-2.5 rounded-2xl border border-black/10 bg-[#FAF7F2] text-xs font-medium focus:ring-2 focus:ring-pink-400 focus:bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <div className="flex items-center justify-end">
             <button
-              type="button"
-              onClick={handleResetDefaultBackground}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 text-xs font-bold transition-all border border-pink-200 cursor-pointer shadow-2xs self-start sm:self-auto"
+              type="submit"
+              disabled={isSavingText}
+              className="px-8 py-4 rounded-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-pink-200 hover:shadow-xl hover:scale-102 active:scale-98 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Kembalikan ke Default (Krem Pastel)</span>
+              <Check className="w-4 h-4 text-white" />
+              <span>{isSavingText ? 'Menyimpan ke Firestore...' : 'Simpan Semua Pengaturan Teks ♡'}</span>
             </button>
           </div>
 
-          <div 
-            className="p-6 sm:p-8 rounded-3xl border-2 border-dashed border-pink-200 relative overflow-hidden transition-all shadow-inner"
-            style={{
-              backgroundColor: storeBackground?.type === 'color' ? storeBackground.value : '#F9F7F2',
-              backgroundImage: storeBackground?.type === 'image' ? `url("${storeBackground.value}")` : 'none',
-              backgroundSize: storeBackground?.mode === 'repeat' ? 'auto' : 'cover',
-              backgroundRepeat: storeBackground?.mode === 'repeat' ? 'repeat' : 'no-repeat',
-              backgroundPosition: 'center',
-            }}
-          >
-            {/* Mockup Card inside preview */}
-            <div className="max-w-md mx-auto bg-white/95 backdrop-blur-md p-5 rounded-2xl border border-pink-100 shadow-lg flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-400 to-rose-500 text-white flex items-center justify-center text-xl font-bold shadow-xs shrink-0">
-                ♡
-              </div>
-              <div className="flex-1 min-w-0">
-                <span className="text-[10px] font-bold text-pink-600 uppercase tracking-widest">
-                  {storeBackground?.type === 'image' ? 'Latar Gambar Aktif' : 'Latar Warna Aktif'}
-                </span>
-                <h4 className="font-playfair text-base font-bold text-[#2E241E] truncate">
-                  {brandName} — {tagline}
-                </h4>
-                <p className="text-[11px] text-[#7A6A61] font-mono mt-0.5 truncate">
-                  {storeBackground?.type === 'color' 
-                    ? `Warna: ${storeBackground.value} ${storeBackground.value.toLowerCase() === '#f9f7f2' ? '(Default)' : ''}` 
-                    : `Mode: ${storeBackground?.mode === 'repeat' ? 'Pola Berulang' : storeBackground?.mode === 'fixed' ? 'Parallax Fixed' : 'Full Cover'}`
-                  }
-                </p>
+        </form>
+      )}
+
+      {/* ========================================================
+          TAB 3: BACKGROUND COLOR & PATTERNS
+          ======================================================== */}
+      {activeTab === 'background' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+          
+          {/* Preset Palettes */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                  Pilihan Warna Latar Belakang Pastel
+                </h3>
+                <p className="text-xs text-[#7A6A61]">Klik palet warna untuk langsung mengubah nuansa estetika seluruh website</p>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Options A: Color Picker & Preset Colors */}
-        <div className="p-5 sm:p-6 rounded-3xl bg-[#FAF8F5] border border-pink-100 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xs font-bold text-[#2E241E] flex items-center gap-1.5 uppercase tracking-wide">
-                <Palette className="w-4 h-4 text-pink-500" />
-                <span>Opsi A: Pilih Warna Latar Belakang (Color Picker)</span>
-              </h3>
-              <p className="text-[11px] text-[#7A6A61] mt-0.5">
-                Gunakan pemilih warna kustom interaktif atau klik palet warna pastel estetik di bawah.
-              </p>
-            </div>
-
-            {/* Live Color Input & Hex */}
-            <div className="flex items-center gap-2.5 bg-white px-3.5 py-2 rounded-2xl border border-pink-200 shadow-xs self-start sm:self-auto">
-              <input
-                type="color"
-                value={selectedColor}
-                onChange={(e) => {
-                  setSelectedColor(e.target.value);
-                  handleApplyColor(e.target.value);
-                }}
-                className="w-8 h-8 rounded-xl border border-pink-200 cursor-pointer p-0.5 shrink-0"
-                title="Klik untuk memilih warna kustom"
-              />
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-[#A08C8C] uppercase">KODE HEX</span>
-                <span className="font-mono text-xs font-extrabold text-[#2E241E] uppercase">{selectedColor}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Preset Pastel Color Chips */}
-          <div className="space-y-2.5 pt-1">
-            <span className="text-[11px] font-bold text-[#7A6A61] uppercase tracking-wider">
-              Pilihan Palet Warna Pastel Estetik:
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {PRESET_BG_COLORS.map((preset, idx) => {
-                const isSelected = storeBackground?.type === 'color' && storeBackground.value.toLowerCase() === preset.color.toLowerCase();
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleApplyColor(preset.color)}
-                    className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer group ${
-                      isSelected 
-                        ? 'border-pink-500 bg-white ring-2 ring-pink-300 shadow-sm' 
-                        : 'border-pink-100 bg-white hover:border-pink-300'
-                    }`}
-                  >
-                    <div 
-                      className="w-8 h-8 rounded-xl border border-black/10 shadow-2xs shrink-0 flex items-center justify-center"
-                      style={{ backgroundColor: preset.color }}
-                    >
-                      {isSelected && <Check className="w-4 h-4 text-pink-600 stroke-[3]" />}
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="text-xs font-bold text-[#2E241E] group-hover:text-pink-600 truncate">
-                        {preset.name}
-                      </p>
-                      <span className="text-[10px] font-mono text-[#8C7D75]">
-                        {preset.color}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Options B: Upload Image / Pattern Background */}
-        <div className="p-5 sm:p-6 rounded-3xl bg-[#FAF8F5] border border-pink-100 space-y-4">
-          <div>
-            <h3 className="text-xs font-bold text-[#2E241E] flex items-center gap-1.5 uppercase tracking-wide">
-              <ImageIcon className="w-4 h-4 text-pink-500" />
-              <span>Opsi B: Unggah Gambar / Pattern Latar Belakang</span>
-            </h3>
-            <p className="text-[11px] text-[#7A6A61] mt-0.5">
-              Gunakan wallpaper, tekstur motif beads, atau pattern halus untuk background website.
-            </p>
-          </div>
-
-          <input
-            ref={bgFileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleBgFileUpload}
-          />
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-            {/* Upload Button */}
-            <div className="lg:col-span-6 space-y-2">
-              <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {COLOR_PRESETS.map((col) => (
                 <button
+                  key={col.hex}
                   type="button"
-                  onClick={() => bgFileInputRef.current?.click()}
-                  disabled={isProcessingBg}
-                  className="flex-1 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md shadow-pink-200 hover:shadow-lg hover:scale-[1.01] active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  onClick={() => handleApplyColor(col.hex)}
+                  className={`p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3 text-left cursor-pointer ${
+                    selectedColor.toLowerCase() === col.hex.toLowerCase()
+                      ? 'border-pink-500 bg-pink-50/50 shadow-xs'
+                      : 'border-black/5 hover:border-pink-300 bg-white'
+                  }`}
                 >
-                  <Upload className="w-4 h-4" />
-                  <span>{storeBackground?.type === 'image' ? 'Ganti Gambar Latar Belakang' : 'Unggah Foto / Pattern Background'}</span>
-                </button>
-              </div>
-              <p className="text-[10px] text-[#8C7D75]">
-                Mendukung PNG, JPG, WebP. Gambar dioptimasi otomatis agar hemat kuota memori browser.
-              </p>
-            </div>
-
-            {/* URL Input */}
-            <div className="lg:col-span-6 space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="url"
-                  placeholder="Atau masukkan URL gambar background..."
-                  value={bgInputUrl}
-                  onChange={(e) => setBgInputUrl(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-pink-200 bg-white text-xs text-[#2E241E] focus:ring-1 focus:ring-pink-400 placeholder:text-[#A08C8C]"
-                />
-                <button
-                  type="button"
-                  onClick={handleApplyBgUrl}
-                  disabled={!bgInputUrl.trim() || isProcessingBg}
-                  className="px-4 py-2.5 rounded-xl bg-[#2D2D2D] text-white text-xs font-bold hover:bg-black transition-colors disabled:opacity-40 cursor-pointer"
-                >
-                  Terapkan URL
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Background Display Mode Selection */}
-          <div className="pt-2 border-t border-pink-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-pink-500" />
-              <span className="text-xs font-bold text-[#2E241E]">Mode Tampilan Gambar:</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleBgModeChange('cover')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  bgMode === 'cover' 
-                    ? 'bg-pink-600 text-white shadow-xs' 
-                    : 'bg-white text-[#7A6A61] border border-pink-200 hover:bg-pink-50'
-                }`}
-              >
-                Penuh (Full Cover)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleBgModeChange('repeat')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  bgMode === 'repeat' 
-                    ? 'bg-pink-600 text-white shadow-xs' 
-                    : 'bg-white text-[#7A6A61] border border-pink-200 hover:bg-pink-50'
-                }`}
-              >
-                Pola Berulang (Repeat Pattern)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleBgModeChange('fixed')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  bgMode === 'fixed' 
-                    ? 'bg-pink-600 text-white shadow-xs' 
-                    : 'bg-white text-[#7A6A61] border border-pink-200 hover:bg-pink-50'
-                }`}
-              >
-                Parallax (Fixed)
-              </button>
-            </div>
-          </div>
-
-          {/* Preset Background Patterns */}
-          <div className="pt-2 border-t border-pink-100 space-y-2">
-            <span className="text-[11px] font-bold text-[#7A6A61] uppercase tracking-wider">
-              Atau Gunakan Pilihan Pattern Estetik Siap Pakai:
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {PRESET_BG_PATTERNS.map((pattern, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    saveStoreBackground({ type: 'image', value: pattern.url, mode: bgMode });
-                    showToast('success', `Pattern "${pattern.name}" berhasil diterapkan!`);
-                  }}
-                  className="p-2.5 rounded-2xl border border-pink-100 bg-white hover:border-pink-300 transition-all text-left flex items-center gap-3 cursor-pointer group"
-                >
-                  <img
-                    src={pattern.url}
-                    alt={pattern.name}
-                    className="w-11 h-11 rounded-xl object-cover border border-pink-200 group-hover:scale-105 transition-transform"
+                  <span
+                    className="w-8 h-8 rounded-xl border border-black/10 shadow-xs shrink-0"
+                    style={{ backgroundColor: col.hex }}
                   />
                   <div>
-                    <h4 className="font-bold text-xs text-[#2E241E] group-hover:text-pink-600">
-                      {pattern.name}
-                    </h4>
-                    <span className="text-[10px] text-pink-600 font-semibold">
-                      {pattern.tag}
-                    </span>
+                    <p className="text-xs font-bold text-[#2E241E]">{col.name}</p>
+                    <span className="text-[10px] text-gray-500 font-mono">{col.hex}</span>
                   </div>
                 </button>
               ))}
             </div>
           </div>
+
+          {/* Custom Pattern Background Uploader */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
+                  Unggah Gambar Pola Background (Wallpaper Pattern)
+                </h3>
+                <p className="text-xs text-[#7A6A61]">Unggah pola seamless atau wallpaper estetika untuk latar website</p>
+              </div>
+            </div>
+
+            <UniversalImageUploader
+              label="Gambar Pola / Wallpaper Background"
+              sublabel="Otomatis dikompres &lt; 150 KB dan diterapkan ke body website"
+              currentImage={storeBackground?.type === 'image' ? storeBackground.value : null}
+              onImageChange={handleBgFileUpload}
+              onImageRemove={() => handleBgFileUpload('')}
+              aspectRatioLabel="Rasio Bebas / Seamless Tile"
+              previewHeightClass="h-40"
+            />
+
+            {storeBackground?.type === 'image' && (
+              <div className="pt-2 flex items-center gap-2">
+                <span className="text-xs font-bold text-[#2E241E]">Mode Tampilan:</span>
+                {(['cover', 'repeat', 'fixed'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => handleBgModeChange(m)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      bgMode === m
+                        ? 'bg-[#2D2D2D] text-white'
+                        : 'bg-[#FAF7F2] text-[#63534B] hover:bg-pink-100'
+                    }`}
+                  >
+                    {m === 'cover' ? 'Full Cover' : m === 'repeat' ? 'Repeat Pattern' : 'Parallax Fixed'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
-
-      </section>
-
-      {/* Image Crop Modal for Branding */}
-      <ImageCropModal
-        isOpen={cropModalOpen}
-        imageSrc={cropImageSrc}
-        title={
-          cropTargetType === 'logo' 
-            ? 'Crop & Sesuaikan Logo Header ♡' 
-            : cropTargetType === 'banner' 
-            ? 'Crop & Sesuaikan Banner Hero Card ♡' 
-            : 'Crop & Sesuaikan Background Pattern ♡'
-        }
-        description={
-          cropTargetType === 'logo'
-            ? 'Gunakan rasio 1:1 atau Bebas untuk mengatur logo agar pas di header navbar.'
-            : cropTargetType === 'banner'
-            ? 'Rasio 3:4 atau 4:3 sangat pas untuk card visual hero di halaman utama.'
-            : 'Sesuaikan potongan gambar pola latar belakang agar estetik di seluruh layar.'
-        }
-        defaultAspect={cropAspect}
-        cropOptions={{
-          maxDimension: cropTargetType === 'background' ? 1200 : 900,
-          quality: 0.85,
-          preserveAlpha: cropTargetType === 'logo', // Preserve transparency for logo PNG
-        }}
-        onCropComplete={handleCropComplete}
-        onClose={() => {
-          setCropModalOpen(false);
-          setCropImageSrc(null);
-          setCropTargetType(null);
-        }}
-      />
+      )}
 
     </div>
   );

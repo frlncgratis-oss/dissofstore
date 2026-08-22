@@ -268,13 +268,19 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
             </div>
 
             <div className="lg:col-span-5 grid grid-cols-2 gap-3">
-              <img
-                src="https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=500&auto=format&fit=crop&q=80"
+              <ImageWithFallback
+                src={
+                  settings?.highlight_images?.[0] ||
+                  'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80'
+                }
                 alt="Handmade beads crafting"
                 className="rounded-2xl object-cover h-44 sm:h-52 w-full border-2 border-white shadow-md"
               />
-              <img
-                src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=500&auto=format&fit=crop&q=80"
+              <ImageWithFallback
+                src={
+                  settings?.highlight_images?.[1] ||
+                  'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80'
+                }
                 alt="Jewelry details"
                 className="rounded-2xl object-cover h-44 sm:h-52 w-full border-2 border-white shadow-md mt-4"
               />
@@ -416,8 +422,11 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
 
             <div className="lg:col-span-5">
               <div className="rounded-2xl overflow-hidden border border-pink-100 shadow-md">
-                <img
-                  src="https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=700&auto=format&fit=crop&q=80"
+                <ImageWithFallback
+                  src={
+                    settings?.popup_banner_image ||
+                    'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=700&auto=format&fit=crop&q=80'
+                  }
                   alt="Car Free Night Soebrantas booth"
                   className="w-full h-64 object-cover"
                 />
@@ -449,12 +458,16 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          {[
-            'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=500&auto=format&fit=crop&q=80',
-            'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=500&auto=format&fit=crop&q=80',
-            'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=500&auto=format&fit=crop&q=80',
-            'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=500&auto=format&fit=crop&q=80',
-          ].map((src, i) => (
+          {(
+            settings?.instagram_feed_images && settings.instagram_feed_images.length === 4
+              ? settings.instagram_feed_images
+              : [
+                  'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=500&auto=format&fit=crop&q=80',
+                  'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=500&auto=format&fit=crop&q=80',
+                  'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=500&auto=format&fit=crop&q=80',
+                  'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=500&auto=format&fit=crop&q=80',
+                ]
+          ).map((src, i) => (
             <a
               key={i}
               href={`https://instagram.com/${instagram}`}
@@ -462,7 +475,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
               rel="noreferrer"
               className="group aspect-square rounded-2xl overflow-hidden border border-pink-100 relative block bg-pink-50 shadow-xs"
             >
-              <img
+              <ImageWithFallback
                 src={src}
                 alt={`Instagram post ${i + 1}`}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"

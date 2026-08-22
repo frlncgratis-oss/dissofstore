@@ -25,6 +25,7 @@ import { PaymentSettings } from '../../types';
 import { compressImageFile, createWhatsAppLink, getStoredWhatsAppNumber } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 import { ImageCropModal } from '../../components/common/ImageCropModal';
+import { UniversalImageUploader } from '../../components/common/UniversalImageUploader';
 
 const BANK_PRESETS = [
   'BCA (Bank Central Asia)',
@@ -341,56 +342,29 @@ export const AdminPaymentSettingsPage: React.FC = () => {
 
             {/* QRIS Upload & Label */}
             <div className="space-y-3 pt-2 border-t border-pink-100">
-              <div className="flex items-center justify-between">
+              <div className="space-y-1.5">
                 <label className="font-bold text-xs text-[#2E241E] flex items-center gap-1.5">
                   <QrCode className="w-3.5 h-3.5 text-pink-500" />
-                  <span>Barcode Gambar QRIS Toko (Opsional)</span>
+                  <span>Label & Judul QRIS:</span>
                 </label>
-                {qrisImage && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveQrisImage}
-                    className="text-[11px] text-rose-500 hover:underline font-bold cursor-pointer"
-                  >
-                    Hapus QRIS
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
                 <input
                   type="text"
-                  placeholder="Label QRIS (contoh: QRIS DISSOF.ID - Semua E-Wallet &amp; M-Banking)"
+                  placeholder="Label QRIS (contoh: QRIS DISSOF.ID - Semua E-Wallet & M-Banking)"
                   value={qrisLabel}
                   onChange={(e) => setQrisLabel(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-2xl border border-pink-200 bg-[#FAF7F2] text-xs focus:ring-2 focus:ring-pink-400"
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center gap-3">
-                <label className="w-full sm:w-auto px-4 py-2.5 rounded-2xl border-2 border-dashed border-pink-300 hover:border-pink-500 bg-[#FAF7F2] text-pink-700 text-xs font-bold cursor-pointer flex items-center justify-center gap-2 transition-colors">
-                  <Upload className="w-4 h-4" />
-                  <span>{uploadingImage ? 'Mengompres Foto QRIS...' : 'Unggah Barcode QRIS dari HP/PC'}</span>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    disabled={uploadingImage}
-                  />
-                </label>
-
-                <div className="relative flex-1 w-full">
-                  <input
-                    type="text"
-                    placeholder="Atau tempel URL gambar QRIS (https://...)"
-                    value={qrisImage}
-                    onChange={(e) => setQrisImage(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-pink-200 bg-[#FAF7F2] text-xs focus:ring-2 focus:ring-pink-400"
-                  />
-                </div>
-              </div>
+              <UniversalImageUploader
+                label="Foto Barcode QRIS Toko"
+                sublabel="Pilih foto QRIS dari galeri HP / Kamera. Otomatis dikompres &lt; 150 KB untuk checkout cepat."
+                currentImage={qrisImage}
+                onImageChange={(data) => setQrisImage(data)}
+                onImageRemove={() => setQrisImage('')}
+                aspectRatioLabel="Rasio 1:1 Persegi"
+                previewHeightClass="h-44 sm:h-52"
+              />
             </div>
 
             {/* Instructions */}

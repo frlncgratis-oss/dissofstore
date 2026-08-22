@@ -18,9 +18,33 @@
         "footer_text": { "type": "string", "maxLength": 300 },
         "logo_url": { "type": "string", "maxLength": 1000000 },
         "hero_banner_url": { "type": "string", "maxLength": 1000000 },
+        "popup_banner_image": { "type": "string", "maxLength": 1000000 },
+        "highlight_images": { "type": "array" },
+        "instagram_feed_images": { "type": "array" },
         "background": { "type": "object" }
       },
       "required": ["brand_name", "whatsapp_number"]
+    },
+    "EventItem": {
+      "title": "EventItem",
+      "description": "Jadwal event, bazaar, dan pop-up market offline di Dumai",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "tagline": { "type": "string", "maxLength": 150 },
+        "location": { "type": "string", "maxLength": 300 },
+        "date": { "type": "string", "maxLength": 50 },
+        "time": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["upcoming", "past"] },
+        "poster_url": { "type": "string", "maxLength": 1000000 },
+        "gallery_images": { "type": "array" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "booth_number": { "type": "string", "maxLength": 100 },
+        "google_maps_url": { "type": "string", "maxLength": 500 },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "title", "location", "date"]
     },
     "Category": {
       "title": "Category",
@@ -124,6 +148,10 @@
     "/payment_settings/main_config": {
       "schema": "PaymentSettings",
       "description": "Konfigurasi rekening pembayaran dan QRIS"
+    },
+    "/events/{eventId}": {
+      "schema": "EventItem",
+      "description": "Jadwal dan dokumentasi event pop-up bazaar"
     }
   }
 }

@@ -249,6 +249,24 @@ export const DEFAULT_INITIAL_PRODUCTS: Product[] = [
   }
 ];
 
+export const DEFAULT_INITIAL_EVENTS: EventItem[] = [
+  {
+    id: 'ev-1',
+    title: 'Car Free Night Soebrantas Weekend',
+    tagline: 'Pop-Up Market & Craft Bazaar',
+    location: 'Jl. HR. Soebrantas, Dumai (Area Kuliner & Fashion)',
+    date: '2026-08-29',
+    time: '19.00 - 23.00 WIB',
+    status: 'upcoming',
+    poster_url: 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=800&auto=format&fit=crop&q=80',
+    gallery_images: [],
+    description: 'Kunjungi booth Dissof.id! Dapatkan promo Beli 2 Gratis 1 charm, serta custom bracelet dan beaded ring langsung jadi di tempat ♡',
+    booth_number: 'Booth #A12',
+    google_maps_url: 'https://maps.google.com/?q=Dumai+Pop+Up+Market',
+    created_at: new Date().toISOString(),
+  }
+];
+
 const SAMPLE_DUMMY_ORDER_IDS = new Set([
   'ORD-89211',
   'ORD-89210',
@@ -332,6 +350,8 @@ interface StoreContextType {
   savePaymentSettings: (newSettings: PaymentSettings) => void;
   saveSettingsLocal: (newSettings: Partial<SiteSettings>) => Promise<SiteSettings>;
   updateWhatsAppNumberLocal: (newNumber: string) => void;
+  saveEventLocal: (eventData: Partial<EventItem>, editingId?: string) => Promise<EventItem>;
+  deleteEventLocal: (eventId: string) => Promise<void>;
   createOrderLocal: (orderData: {
     customer_name: string;
     customer_whatsapp: string;
@@ -671,12 +691,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.warn('Firestore payment listener error:', err);
     });
 
+    // F. Listen to Events (Real-time onSnapshot for Pop-Up Store & Bazaars)
+    const eventsColRef = collection(db, 'events');
+    const unsubEvents = onSnapshot(eventsColRef, (snap) => {
+      if (!snap.empty) {
+        const loadedEvents: EventItem[] = [];
+        snap.forEach((docSnap) => {
+          loadedEvents.push({ ...docSnap.data(), id: docSnap.id } as EventItem);
+        });
+        // Sort newest event first or by date
+        loadedEvents.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setEvents(loadedEvents);
+        localStorage.setItem('dissof_events', JSON.stringify(loadedEvents));
+        setIsOnlineSynced(true);
+      } else {
+        // Seed initial default events
+        DEFAULT_INITIAL_EVENTS.forEach((ev) => {
+          setDoc(doc(db, 'events', ev.id), ev, { merge: true }).catch(console.warn);
+        });
+      }
+    }, (err) => {
+      console.warn('Firestore events listener error:', err);
+    });
+
     return () => {
       unsubSettings();
       unsubCategories();
       unsubProducts();
       unsubOrders();
       unsubPayment();
+      unsubEvents();
     };
   }, []);
 
@@ -708,6 +752,44 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...settings,
       ...newSettings,
     };
+
+    // Auto-compress any raw base64 images in settings
+    try {
+      if (updated.logo_url && updated.logo_url.startsWith('data:')) {
+        updated.logo_url = await hardCompressImage(updated.logo_url, 800, 0.6, 150);
+      }
+      if (updated.favicon_url && updated.favicon_url.startsWith('data:')) {
+        updated.favicon_url = await hardCompressImage(updated.favicon_url, 256, 0.7, 50);
+      }
+      if (updated.hero_banner_url && updated.hero_banner_url.startsWith('data:')) {
+        updated.hero_banner_url = await hardCompressImage(updated.hero_banner_url, 800, 0.6, 150);
+      }
+      if (updated.popup_banner_image && updated.popup_banner_image.startsWith('data:')) {
+        updated.popup_banner_image = await hardCompressImage(updated.popup_banner_image, 800, 0.6, 150);
+      }
+      if (Array.isArray(updated.highlight_images)) {
+        updated.highlight_images = await Promise.all(
+          updated.highlight_images.map(async (img) => {
+            if (img && img.startsWith('data:')) {
+              return await hardCompressImage(img, 800, 0.6, 150);
+            }
+            return img;
+          })
+        );
+      }
+      if (Array.isArray(updated.instagram_feed_images)) {
+        updated.instagram_feed_images = await Promise.all(
+          updated.instagram_feed_images.map(async (img) => {
+            if (img && img.startsWith('data:')) {
+              return await hardCompressImage(img, 800, 0.6, 150);
+            }
+            return img;
+          })
+        );
+      }
+    } catch (compressErr) {
+      console.warn('Settings image compression fallback:', compressErr);
+    }
 
     if (newSettings.whatsapp_number) {
       setStoredWhatsAppNumber(newSettings.whatsapp_number);
@@ -1138,6 +1220,81 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Events Online Sync (Real-time sync to all devices)
+  const saveEventLocal = async (eventData: Partial<EventItem>, editingId?: string): Promise<EventItem> => {
+    const currentEvents = [...events];
+    let posterUrl = eventData.poster_url || '';
+
+    // Auto-compress poster image if it's a raw base64
+    if (posterUrl && posterUrl.startsWith('data:')) {
+      try {
+        posterUrl = await hardCompressImage(posterUrl, 800, 0.6, 150);
+      } catch (err) {
+        console.warn('Poster auto-compression fallback:', err);
+      }
+    }
+
+    let updatedEvent: EventItem;
+    if (editingId) {
+      const idx = currentEvents.findIndex((e) => e.id === editingId);
+      const existing = idx >= 0 ? currentEvents[idx] : ({} as EventItem);
+      updatedEvent = {
+        ...existing,
+        ...eventData,
+        id: editingId,
+        poster_url: posterUrl || existing.poster_url || 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=800&auto=format&fit=crop&q=80',
+      } as EventItem;
+
+      if (idx >= 0) {
+        currentEvents[idx] = updatedEvent;
+      } else {
+        currentEvents.unshift(updatedEvent);
+      }
+    } else {
+      const newId = `ev-${Date.now()}`;
+      updatedEvent = {
+        id: newId,
+        title: eventData.title || 'Event Baru',
+        tagline: eventData.tagline || 'Pop-Up Market',
+        location: eventData.location || 'Dumai, Riau',
+        date: eventData.date || new Date().toISOString().split('T')[0],
+        time: eventData.time || '19.00 - 23.00 WIB',
+        status: eventData.status || 'upcoming',
+        poster_url: posterUrl || 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=800&auto=format&fit=crop&q=80',
+        gallery_images: eventData.gallery_images || [],
+        description: eventData.description || '',
+        booth_number: eventData.booth_number || '',
+        google_maps_url: eventData.google_maps_url || '',
+        created_at: new Date().toISOString(),
+      };
+      currentEvents.unshift(updatedEvent);
+    }
+
+    setEvents(currentEvents);
+    localStorage.setItem('dissof_events', JSON.stringify(currentEvents));
+
+    // Save to Firestore Online Database (Instantly syncs to all phones)
+    try {
+      await setDoc(doc(db, 'events', updatedEvent.id), updatedEvent, { merge: true });
+    } catch (e) {
+      console.warn('Failed to sync event to Firestore:', e);
+    }
+
+    return updatedEvent;
+  };
+
+  const deleteEventLocal = async (eventId: string): Promise<void> => {
+    const updated = events.filter((e) => e.id !== eventId);
+    setEvents(updated);
+    localStorage.setItem('dissof_events', JSON.stringify(updated));
+
+    try {
+      await deleteDoc(doc(db, 'events', eventId));
+    } catch (e) {
+      console.warn('Failed to delete event from Firestore:', e);
+    }
+  };
+
   const addToCart = (product: Product, quantity = 1, selectedVariant?: string, customNote?: string) => {
     setCart((prev) => {
       const existingIdx = prev.findIndex(
@@ -1298,6 +1455,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         savePaymentSettings,
         saveSettingsLocal,
         updateWhatsAppNumberLocal,
+        saveEventLocal,
+        deleteEventLocal,
         createOrderLocal,
         updateOrderStatusLocal,
         deleteOrderLocal,

@@ -19,9 +19,30 @@ import { ImageWithFallback, FALLBACK_EVENT_IMAGE } from '../../components/common
 import { UniversalImageUploader } from '../../components/common/UniversalImageUploader';
 
 export const AdminEventsPage: React.FC = () => {
-  const { events, refreshData } = useStore();
+  const { events, settings, saveSettingsLocal, saveEventLocal, deleteEventLocal, refreshData } = useStore();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
+  const [bannerSaveStatus, setBannerSaveStatus] = useState<string | null>(null);
+
+  const handleUpdatePopupBanner = async (newImage: string) => {
+    try {
+      await saveSettingsLocal({ popup_banner_image: newImage || '' });
+      setBannerSaveStatus('Tersimpan & Live ke HP Pembeli ✓');
+      setTimeout(() => setBannerSaveStatus(null), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan foto banner pop-up.');
+    }
+  };
+
+  const handleRemovePopupBanner = async () => {
+    try {
+      await saveSettingsLocal({ popup_banner_image: '' });
+      setBannerSaveStatus('Foto dihapus (default) ✓');
+      setTimeout(() => setBannerSaveStatus(null), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus foto.');
+    }
+  };
 
   // Form State
   const [title, setTitle] = useState('');
@@ -115,12 +136,13 @@ export const AdminEventsPage: React.FC = () => {
     };
 
     try {
+      await saveEventLocal(payload, editingEvent?.id);
+      // Optional fallback to backend API
       if (editingEvent) {
-        await api.updateEvent(editingEvent.id, payload);
+        api.updateEvent(editingEvent.id, payload).catch(() => {});
       } else {
-        await api.createEvent(payload);
+        api.createEvent(payload).catch(() => {});
       }
-      await refreshData();
       setModalOpen(false);
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal menyimpan data event.');
@@ -132,8 +154,8 @@ export const AdminEventsPage: React.FC = () => {
   const handleDelete = async (event: EventItem) => {
     if (confirm(`Hapus event "${event.title}"?`)) {
       try {
-        await api.deleteEvent(event.id);
-        await refreshData();
+        await deleteEventLocal(event.id);
+        api.deleteEvent(event.id).catch(() => {});
       } catch (err: any) {
         alert(err.message || 'Gagal menghapus event.');
       }
@@ -163,8 +185,43 @@ export const AdminEventsPage: React.FC = () => {
         </button>
       </div>
 
+      {/* SECTION: FOTO & BANNER SECTION OFFLINE / POP-UP (REAL-TIME SYNC) */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-pink-100 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-pink-100 pb-3">
+          <div>
+            <h2 className="font-bold text-sm sm:text-base text-[#2E241E] flex items-center gap-2">
+              <span>Foto Banner Section "Find Us Offline / Pop-Up Store"</span>
+              {bannerSaveStatus && (
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full animate-pulse">
+                  {bannerSaveStatus}
+                </span>
+              )}
+            </h2>
+            <p className="text-xs text-[#7A6A61]">
+              Foto ini tampil langsung di section "Find Us Offline ♡" di halaman depan pembeli. Perubahan otomatis tersinkronisasi real-time ke seluruh layar HP pembeli tanpa reload.
+            </p>
+          </div>
+        </div>
+
+        <UniversalImageUploader
+          label="Foto Booth Pop-Up Market / Bazaar Dumai"
+          sublabel="Pilih foto dari galeri HP atau PC. Otomatis dikompres &lt; 150KB (Maks 800px, JPEG 0.6) agar cepat dimuat."
+          currentImage={settings?.popup_banner_image || 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=700&auto=format&fit=crop&q=80'}
+          onImageChange={handleUpdatePopupBanner}
+          onImageRemove={handleRemovePopupBanner}
+          aspectRatioLabel="Rasio 16:9 atau 4:3"
+          previewHeightClass="h-44 sm:h-56"
+        />
+      </div>
+
       {/* Events List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-sm text-[#2D2D2D]">Daftar Jadwal Event & Pop-Up Bazaar:</h2>
+          <span className="text-xs text-pink-600 font-bold">{events.length} Event Terdaftar</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {events.length === 0 ? (
           <div className="col-span-full bg-white rounded-2xl p-12 text-center border border-black/5 text-gray-400 text-xs">
             Belum ada jadwal event.
@@ -235,6 +292,7 @@ export const AdminEventsPage: React.FC = () => {
             </div>
           ))
         )}
+        </div>
       </div>
 
       {/* Modal Add / Edit Event */}

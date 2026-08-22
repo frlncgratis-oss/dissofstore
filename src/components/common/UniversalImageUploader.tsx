@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react';
-import { Upload, Camera, Trash2, Crop, Eye, Check, AlertCircle, RefreshCw } from 'lucide-react';
-import { compressImageFile, hardCompressImage, getImageSizeInKB } from '../../lib/utils';
+import React, { useRef, useState, useId } from 'react';
+import { Upload, Camera, Trash2, Crop, Eye, Check, AlertCircle, RefreshCw, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { hardCompressImage, getImageSizeInKB } from '../../lib/utils';
 import { ImageCropModal } from './ImageCropModal';
 import { ImageWithFallback } from './ImageWithFallback';
 
@@ -38,6 +38,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successBadge, setSuccessBadge] = useState<string | null>(null);
 
+  const uploaderId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,7 +56,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
     } catch (err: any) {
       console.warn('Image processing error:', err);
       try {
-        // Fallback standard compression
+        // Fallback: save raw image if compression helper encounters unexpected canvas limitation
         await onImageChange(rawSrc);
         setSuccessBadge('Tersimpan ✓');
         setTimeout(() => setSuccessBadge(null), 3000);
@@ -71,6 +72,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsProcessing(true);
     const reader = new FileReader();
     reader.onload = () => {
       if (reader.result) {
@@ -78,10 +80,15 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
         if (enableCrop) {
           setTempImageForCrop(resultStr);
           setCropModalOpen(true);
+          setIsProcessing(false);
         } else {
           processAndSetImage(resultStr);
         }
       }
+    };
+    reader.onerror = () => {
+      setIsProcessing(false);
+      setErrorMsg('Gagal membaca file gambar dari perangkat.');
     };
     reader.readAsDataURL(file);
     if (e.target) e.target.value = '';
@@ -100,12 +107,30 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
   };
 
   const handleRemove = async () => {
-    if (window.confirm('Hapus foto ini?')) {
-      if (onImageRemove) {
-        await onImageRemove();
-      } else {
-        await onImageChange('');
+    if (window.confirm(`Hapus ${label}?`)) {
+      try {
+        if (onImageRemove) {
+          await onImageRemove();
+        } else {
+          await onImageChange('');
+        }
+        setSuccessBadge('Foto Dihapus ✓');
+        setTimeout(() => setSuccessBadge(null), 3000);
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Gagal menghapus foto.');
       }
+    }
+  };
+
+  const triggerGalleryUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const triggerCameraUpload = () => {
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
     }
   };
 
@@ -128,12 +153,13 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
           )}
         </div>
         <span className="text-[10px] text-pink-600 font-medium self-start sm:self-auto bg-white px-2 py-0.5 rounded-md border border-pink-100">
-          {aspectRatioLabel} • Auto-Compress &lt; 150KB
+          {aspectRatioLabel} • Maks 800px, JPEG 0.6
         </span>
       </div>
 
-      {/* Hidden File and Camera Inputs */}
+      {/* Hidden File and Camera Inputs with explicit IDs */}
       <input
+        id={`file-${uploaderId}`}
         ref={fileInputRef}
         type="file"
         accept="image/*"
@@ -141,6 +167,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
         className="hidden"
       />
       <input
+        id={`cam-${uploaderId}`}
         ref={cameraInputRef}
         type="file"
         accept="image/*"
@@ -167,7 +194,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-white text-[#2D2D2D] font-bold text-[11px] shadow-sm hover:bg-pink-50 flex items-center gap-1 cursor-pointer"
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>Zoom</span>
+                <span>Lihat</span>
               </button>
 
               {enableCrop && (
@@ -177,24 +204,25 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
                   className="px-3 py-1.5 rounded-xl bg-white text-[#2D2D2D] font-bold text-[11px] shadow-sm hover:bg-pink-50 flex items-center gap-1 cursor-pointer"
                 >
                   <Crop className="w-3.5 h-3.5" />
-                  <span>Crop</span>
+                  <span>Crop / Sesuaikan</span>
                 </button>
               )}
             </div>
 
             {/* Quick size badge */}
-            <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[9px] font-mono">
-              {getImageSizeInKB(currentImage)} KB (Optimal)
+            <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[9px] font-mono flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5 text-pink-300" />
+              <span>{getImageSizeInKB(currentImage)} KB (Optimal)</span>
             </div>
           </div>
 
-          {/* Action Row: Ganti, Kamera, Hapus */}
+          {/* Action Row: Ganti Foto, Kamera, Crop, Hapus Foto */}
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={triggerGalleryUpload}
               disabled={isProcessing}
-              className="flex-1 min-w-[120px] px-3 py-2 rounded-xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+              className="flex-1 min-w-[130px] px-3.5 py-2 rounded-xl bg-white border border-pink-300 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>{isProcessing ? 'Mengompres...' : 'Ganti dari Galeri'}</span>
@@ -202,7 +230,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
 
             <button
               type="button"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={triggerCameraUpload}
               disabled={isProcessing}
               className="px-3 py-2 rounded-xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
               title="Ambil Foto Kamera HP"
@@ -238,31 +266,41 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
         </div>
       ) : (
         /* Empty Upload Dropzone */
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div
-            onClick={() => fileInputRef.current?.click()}
+            onClick={triggerGalleryUpload}
             className="border-2 border-dashed border-pink-200 hover:border-pink-400 bg-white rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all hover:bg-pink-50/40 group shadow-2xs"
           >
-            <div className="w-10 h-10 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
+            <div className="w-11 h-11 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
               <Upload className="w-5 h-5" />
             </div>
             <p className="font-bold text-xs text-[#2E241E]">
-              {isProcessing ? 'Mengompres Gambar...' : 'Klik untuk Pilih dari Galeri HP / PC'}
+              {isProcessing ? 'Mengompres Gambar...' : 'Klik untuk Pilih Foto dari Galeri HP / PC'}
             </p>
             <span className="text-[10px] text-[#8C7D75] mt-0.5">
-              Format JPG, PNG, WEBP (Otomatis dikompres &lt; 150 KB untuk performa cepat)
+              Format JPG, PNG, WEBP (Otomatis dikompres &lt; 150 KB, JPEG 0.6)
             </span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-0.5">
             <button
               type="button"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={triggerGalleryUpload}
               disabled={isProcessing}
-              className="px-4 py-2 rounded-xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+              className="flex-1 min-w-[140px] px-4 py-2.5 rounded-xl bg-pink-50 border border-pink-200 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-pink-600" />
+              <span>Pilih dari Galeri</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={triggerCameraUpload}
+              disabled={isProcessing}
+              className="px-4 py-2.5 rounded-xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             >
               <Camera className="w-4 h-4 text-pink-500" />
-              <span>Ambil dari Kamera HP Langsung</span>
+              <span>Buka Kamera HP</span>
             </button>
           </div>
         </div>
@@ -296,7 +334,7 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
           <div className="max-w-2xl w-full bg-white rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-black/5 pb-2">
               <span className="font-bold text-xs text-[#2D2D2D]">{label} (Pratinjau)</span>
-              <button onClick={() => setPreviewZoomOpen(false)} className="text-gray-400 hover:text-black text-xs font-bold px-2 py-1">
+              <button onClick={() => setPreviewZoomOpen(false)} className="text-gray-400 hover:text-black text-xs font-bold px-2 py-1 cursor-pointer">
                 Tutup ✕
               </button>
             </div>
@@ -310,3 +348,4 @@ export const UniversalImageUploader: React.FC<UniversalImageUploaderProps> = ({
     </div>
   );
 };
+

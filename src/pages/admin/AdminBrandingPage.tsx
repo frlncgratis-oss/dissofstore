@@ -22,17 +22,19 @@ import {
   Megaphone,
   Radio,
   FileText,
-  HelpCircle
+  CreditCard,
+  QrCode,
+  Save,
+  Globe
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { SiteSettings, StoreBackground } from '../../types';
+import { SiteSettings, StoreBackground, PaymentSettings } from '../../types';
 import { 
   hardCompressImage, 
   getImageSizeInKB, 
   createWhatsAppLink 
 } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
-import { ImageCropModal } from '../../components/common/ImageCropModal';
 import { UniversalImageUploader } from '../../components/common/UniversalImageUploader';
 
 const COLOR_PRESETS = [
@@ -59,6 +61,8 @@ export const AdminBrandingPage: React.FC = () => {
     storeBackground,
     saveStoreBackground,
     resetStoreBackground,
+    paymentSettings,
+    savePaymentSettings,
     isOnlineSynced
   } = useStore();
 
@@ -88,7 +92,7 @@ export const AdminBrandingPage: React.FC = () => {
   const [bgMode, setBgMode] = useState<'cover' | 'repeat' | 'fixed'>(storeBackground?.mode || 'cover');
 
   // Status & Feedback
-  const [isSavingText, setIsSavingText] = useState(false);
+  const [isSavingGlobal, setIsSavingGlobal] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -112,10 +116,10 @@ export const AdminBrandingPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // --- SAVE TEXT SETTINGS ---
-  const handleSaveTextSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingText(true);
+  // --- SAVE ALL SETTINGS & BRANDING TO FIRESTORE ---
+  const handleSaveAll = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSavingGlobal(true);
     try {
       await saveSettingsLocal({
         brand_name: brandName.trim(),
@@ -130,22 +134,32 @@ export const AdminBrandingPage: React.FC = () => {
         about_story: aboutStory.trim(),
         footer_text: footerText.trim(),
       });
-      showToast('success', 'Pengaturan teks & pengumuman berhasil disimpan ke Firestore secara real-time!');
+      showToast('success', 'Pengaturan Berhasil Disimpan! Sinkronisasi real-time aktif ke seluruh HP pembeli ♡');
     } catch (err: any) {
-      showToast('error', err.message || 'Gagal menyimpan pengaturan teks.');
+      showToast('error', err.message || 'Gagal menyimpan pengaturan branding.');
     } finally {
-      setIsSavingText(false);
+      setIsSavingGlobal(false);
     }
   };
 
-  // --- MEDIA HANDLERS ---
+  // --- MEDIA HANDLERS (AUTO-COMPRESS & INSTANT FIRESTORE SYNC) ---
   const handleUpdateLogo = async (compressedData: string) => {
     if (!compressedData) {
       await removeStoreLogo();
       showToast('success', 'Logo toko telah dihapus (Navbar kembali ke teks default).');
     } else {
       await saveStoreLogo(compressedData);
-      showToast('success', 'Logo toko berhasil diperbarui & disimpan ke Firestore!');
+      showToast('success', 'Logo header toko berhasil disimpan & tersinkronisasi ke semua HP!');
+    }
+  };
+
+  const handleUpdateFavicon = async (compressedData: string) => {
+    if (!compressedData) {
+      await saveSettingsLocal({ favicon_url: '' });
+      showToast('success', 'Favicon toko dihapus.');
+    } else {
+      await saveSettingsLocal({ favicon_url: compressedData });
+      showToast('success', 'Favicon tab browser toko berhasil diperbarui & disimpan!');
     }
   };
 
@@ -155,13 +169,25 @@ export const AdminBrandingPage: React.FC = () => {
       showToast('success', 'Hero banner dihapus (kembali ke foto default).');
     } else {
       await saveHeroBanner(compressedData);
-      showToast('success', 'Hero banner utama berhasil diperbarui & disimpan ke Firestore!');
+      showToast('success', 'Hero banner promo utama berhasil disimpan ke Firestore!');
     }
   };
 
   const handleUpdatePopupBanner = async (compressedData: string) => {
-    await saveSettingsLocal({ popup_banner_image: compressedData || undefined });
-    showToast('success', 'Foto/Banner Event Pop-Up Store berhasil diperbarui!');
+    await saveSettingsLocal({ popup_banner_image: compressedData || '' });
+    showToast('success', 'Foto/Banner Event Pop-Up Dumai berhasil disimpan!');
+  };
+
+  const handleUpdateQRIS = async (compressedData: string) => {
+    try {
+      await savePaymentSettings({
+        ...paymentSettings,
+        qris_image: compressedData || undefined
+      });
+      showToast('success', 'Foto Barcode QRIS toko berhasil disimpan ke Firestore!');
+    } catch (err: any) {
+      showToast('error', err.message || 'Gagal menyimpan foto QRIS.');
+    }
   };
 
   const handleUpdateHighlightImage = async (index: number, compressedData: string) => {
@@ -197,7 +223,7 @@ export const AdminBrandingPage: React.FC = () => {
     setSelectedColor(colorHex);
     try {
       await saveStoreBackground({ type: 'color', value: colorHex, mode: 'cover' });
-      showToast('success', `Warna latar belakang (${colorHex}) berhasil diterapkan!`);
+      showToast('success', `Warna tema latar belakang (${colorHex}) berhasil diterapkan!`);
     } catch (err: any) {
       showToast('error', err.message || 'Gagal menyimpan warna background.');
     }
@@ -206,7 +232,7 @@ export const AdminBrandingPage: React.FC = () => {
   const handleBgFileUpload = async (compressedData: string) => {
     if (!compressedData) {
       await resetStoreBackground();
-      showToast('success', 'Gambar latar belakang dihapus (kembali ke warna default).');
+      showToast('success', 'Gambar latar belakang dihapus (kembali ke warna pastel default).');
     } else {
       await saveStoreBackground({ type: 'image', value: compressedData, mode: bgMode });
       showToast('success', 'Gambar pola background berhasil disimpan ke Firestore!');
@@ -236,7 +262,7 @@ export const AdminBrandingPage: React.FC = () => {
   const popupImage = settings?.popup_banner_image || 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=700&auto=format&fit=crop&q=80';
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-16">
       
       {/* Top Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-pink-100 pb-5">
@@ -246,20 +272,20 @@ export const AdminBrandingPage: React.FC = () => {
             <span>Dynamic Branding, Media & Content Editor</span>
           </div>
           <h1 className="font-playfair text-2xl sm:text-3xl font-bold text-[#2D2D2D]">
-            Pengaturan Tampilan & Media ♡
+            Pengaturan Toko & Branding ♡
           </h1>
           <p className="text-xs text-[#7A6A61] mt-1 font-medium max-w-3xl">
-            Pusat kendali seluruh foto, banner, running announcement bar, Instagram feed, info event bazaar Dumai, dan identitas toko. Semua perubahan langsung terhubung 100% ke Cloud Firestore secara instan di semua HP pembeli.
+            Pusat kendali seluruh logo toko, favicon, hero banner, banner pop-up event Dumai, foto barcode QRIS, highlight aksesoris, running announcement bar, dan tema warna. Semua file langsung dikompres otomatis (&lt; 150KB) dan tersimpan ke Cloud Firestore secara instan di semua HP pembeli.
           </p>
         </div>
 
         <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shrink-0 shadow-2xs">
           <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
-          <span>Firestore onSnapshot Aktif</span>
+          <span>Firestore onSnapshot Real-Time</span>
         </div>
       </div>
 
-      {/* Toast Alert */}
+      {/* Toast Alert Pop-Up */}
       {toastMessage && (
         <div
           className={`p-4 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-md animate-in fade-in slide-in-from-top-2 duration-200 ${
@@ -325,7 +351,7 @@ export const AdminBrandingPage: React.FC = () => {
       {activeTab === 'media' && (
         <div className="space-y-8 animate-in fade-in duration-200">
           
-          {/* Section A: Logo Header & Hero Promo */}
+          {/* Section A: Logo Header & Favicon Website */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
             {/* A1: Logo Header Navbar */}
@@ -333,7 +359,7 @@ export const AdminBrandingPage: React.FC = () => {
               <div className="flex items-center justify-between border-b border-pink-100 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                    A
+                    A1
                   </span>
                   <h3 className="font-bold text-sm text-[#2E241E]">Logo Header Toko (Navbar)</h3>
                 </div>
@@ -342,7 +368,7 @@ export const AdminBrandingPage: React.FC = () => {
 
               <UniversalImageUploader
                 label="Logo Header Toko"
-                sublabel="Akan tampil di navbar atas website. Jika dihapus, otomatis menampilkan teks nama toko."
+                sublabel="Tampil di navigasi atas website pembeli. Format PNG transparan atau JPG. Jika dihapus, otomatis kembali ke teks brand."
                 currentImage={storeLogo}
                 onImageChange={handleUpdateLogo}
                 onImageRemove={() => handleUpdateLogo('')}
@@ -351,7 +377,35 @@ export const AdminBrandingPage: React.FC = () => {
               />
             </div>
 
-            {/* A2: Hero Banner / Promo Utama */}
+            {/* A2: Favicon / Tab Icon Browser */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                    A2
+                  </span>
+                  <h3 className="font-bold text-sm text-[#2E241E]">Favicon Toko (Icon Tab Browser)</h3>
+                </div>
+                <span className="text-[10px] text-gray-500 font-mono">Tab Icon / Bookmark</span>
+              </div>
+
+              <UniversalImageUploader
+                label="Favicon Website DISSOF.ID"
+                sublabel="Icon kecil yang muncul di tab browser pembeli dan bookmark layar utama HP."
+                currentImage={settings?.favicon_url}
+                onImageChange={handleUpdateFavicon}
+                onImageRemove={() => handleUpdateFavicon('')}
+                aspectRatioLabel="Rasio 1:1 Persegi (256x256)"
+                previewHeightClass="h-28"
+              />
+            </div>
+
+          </div>
+
+          {/* Section B: Hero Banner Promo Utama & Barcode QRIS Toko */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* B1: Hero Banner Promo Utama */}
             <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-pink-100 pb-3">
                 <div className="flex items-center gap-2">
@@ -365,7 +419,7 @@ export const AdminBrandingPage: React.FC = () => {
 
               <UniversalImageUploader
                 label="Foto Banner Utama (Hero Card)"
-                sublabel="Foto highlight aksesoris besar di sebelah kanan headline halaman depan."
+                sublabel="Foto highlight aksesoris besar di sebelah kanan headline halaman depan pembeli."
                 currentImage={storeHeroBanner}
                 onImageChange={handleUpdateHeroBanner}
                 onImageRemove={() => handleUpdateHeroBanner('')}
@@ -374,20 +428,43 @@ export const AdminBrandingPage: React.FC = () => {
               />
             </div>
 
+            {/* B2: Foto Barcode QRIS Toko */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
+                    C
+                  </span>
+                  <h3 className="font-bold text-sm text-[#2E241E]">Foto Barcode QRIS Toko</h3>
+                </div>
+                <span className="text-[10px] text-gray-500 font-mono">Checkout QRIS</span>
+              </div>
+
+              <UniversalImageUploader
+                label="Barcode QRIS DISSOF.ID"
+                sublabel="Muncul otomatis di form checkout keranjang saat customer memilih metode pembayaran QRIS / E-Wallet."
+                currentImage={paymentSettings?.qris_image}
+                onImageChange={handleUpdateQRIS}
+                onImageRemove={() => handleUpdateQRIS('')}
+                aspectRatioLabel="Rasio 1:1 Persegi"
+                previewHeightClass="h-44 sm:h-52"
+              />
+            </div>
+
           </div>
 
-          {/* Section B: Info Event Pop-Up Store */}
+          {/* Section C: Info Event Pop-Up Store (Banner / Foto Event Dumai) */}
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-pink-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                  C
+                  D
                 </span>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
-                    Section Info Event & Pop-Up Store (Banner / Foto Event Dumai)
+                    Banner Event &amp; Pop-Up Store Offline Dumai
                   </h3>
-                  <p className="text-xs text-[#7A6A61]">Foto booth Car Free Night Soebrantas atau Bazaar Pop-Up di section "Find Us Offline ♡"</p>
+                  <p className="text-xs text-[#7A6A61]">Foto booth Car Free Night Soebrantas atau Bazaar Pop-Up di section "Find Us Offline ♡" halaman depan</p>
                 </div>
               </div>
             </div>
@@ -397,17 +474,18 @@ export const AdminBrandingPage: React.FC = () => {
               sublabel="Foto suasana booth Dissof di CFN Soebrantas / event bazar Dumai."
               currentImage={popupImage}
               onImageChange={handleUpdatePopupBanner}
+              onImageRemove={() => handleUpdatePopupBanner('')}
               aspectRatioLabel="Rasio 16:9 atau 4:3"
               previewHeightClass="h-48 sm:h-64"
             />
           </div>
 
-          {/* Section C: Highlight Aksesoris Handmade (2 Foto) */}
+          {/* Section D: Highlight Aksesoris Handmade (2 Foto) */}
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-pink-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                  D
+                  E
                 </span>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base text-[#2E241E]">
@@ -439,12 +517,12 @@ export const AdminBrandingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section D: Instagram Feed (4 Kotak Foto Instagram) */}
+          {/* Section E: Instagram Feed (4 Kotak Foto Instagram) */}
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-pink-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-pink-500 text-white font-bold flex items-center justify-center text-xs">
-                  E
+                  F
                 </span>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base text-[#2E241E] flex items-center gap-2">
@@ -478,7 +556,7 @@ export const AdminBrandingPage: React.FC = () => {
           TAB 2: REAL-TIME TEXT & CONTENT EDITOR
           ======================================================== */}
       {activeTab === 'content' && (
-        <form onSubmit={handleSaveTextSettings} className="space-y-6 animate-in fade-in duration-200">
+        <form onSubmit={handleSaveAll} className="space-y-6 animate-in fade-in duration-200">
           
           {/* 1. Running Announcement Bar */}
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-pink-100 shadow-xs space-y-4">
@@ -634,18 +712,6 @@ export const AdminBrandingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Button */}
-          <div className="flex items-center justify-end">
-            <button
-              type="submit"
-              disabled={isSavingText}
-              className="px-8 py-4 rounded-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-pink-200 hover:shadow-xl hover:scale-102 active:scale-98 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <Check className="w-4 h-4 text-white" />
-              <span>{isSavingText ? 'Menyimpan ke Firestore...' : 'Simpan Semua Pengaturan Teks ♡'}</span>
-            </button>
-          </div>
-
         </form>
       )}
 
@@ -735,6 +801,37 @@ export const AdminBrandingPage: React.FC = () => {
 
         </div>
       )}
+
+      {/* ========================================================
+          GLOBAL ACTION BUTTON: SIMPAN PERUBAHAN BRANDING & MEDIA
+          ======================================================== */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 p-4 bg-white/95 backdrop-blur-md border-t border-pink-100 shadow-2xl flex items-center justify-between gap-4 max-w-7xl mx-auto rounded-t-3xl sm:static sm:bg-transparent sm:backdrop-blur-none sm:border-none sm:shadow-none sm:p-0 sm:mt-8">
+        <div className="hidden sm:flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-pink-500" />
+          <span className="text-xs text-[#55473F] font-semibold">
+            Semua foto &amp; teks otomatis terkirim real-time ke Firestore untuk seluruh pengunjung website.
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => handleSaveAll()}
+          disabled={isSavingGlobal}
+          className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-600 hover:to-rose-600 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-pink-200 hover:shadow-xl hover:scale-102 active:scale-98 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+        >
+          {isSavingGlobal ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin text-white" />
+              <span>Menyimpan ke Firestore...</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 text-white" />
+              <span>Simpan Perubahan / Update Branding ♡</span>
+            </>
+          )}
+        </button>
+      </div>
 
     </div>
   );

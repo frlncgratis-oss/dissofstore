@@ -38,6 +38,22 @@ const MainApp: React.FC = () => {
   // Admin sub-tab
   const [currentAdminTab, setCurrentAdminTab] = useState<string>('dashboard');
 
+  // Dynamic Favicon & Title update
+  React.useEffect(() => {
+    if (settings?.favicon_url) {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.getElementsByTagName('head')[0].appendChild(link);
+      }
+      link.href = settings.favicon_url;
+    }
+    if (settings?.brand_name) {
+      document.title = `${settings.brand_name} - ${settings.tagline || 'everything is heartmade♡'}`;
+    }
+  }, [settings?.favicon_url, settings?.brand_name, settings?.tagline]);
+
   // Dynamic Background styling applied to body & website container
   React.useEffect(() => {
     if (!storeBackground || !storeBackground.value) {

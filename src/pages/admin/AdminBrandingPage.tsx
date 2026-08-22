@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Palette, 
   Upload, 
@@ -26,7 +26,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useStore } from '../../context/StoreContext';
 import { SiteSettings, PaymentSettings } from '../../types';
-import { getImageSizeInKB, hardCompressImage } from '../../lib/utils';
+import { getImageSizeInKB, hardCompressImage, safeString, safeTrim } from '../../lib/utils';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 import { ImageCropModal, AspectRatioOption } from '../../components/common/ImageCropModal';
 
@@ -64,6 +64,10 @@ export const AdminBrandingPage: React.FC = () => {
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<'media' | 'content' | 'background'>('media');
+
+  // Race condition flag & ref to prevent onSnapshot from overwriting active form/media edits
+  const isSavingRef = useRef<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Local state for instant preview & responsive reactivity
   const [brandingData, setBrandingData] = useState<{
@@ -113,8 +117,13 @@ export const AdminBrandingPage: React.FC = () => {
   const [previewZoomImage, setPreviewZoomImage] = useState<{ src: string; label: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Synchronize state with store settings
+  // Synchronize state with store settings ONLY when NOT currently saving/editing
   useEffect(() => {
+    // Prevent snapshot echo from overwriting unsaved or in-flight save state
+    if (isSavingRef.current) {
+      return;
+    }
+
     if (settings) {
       if (settings.brand_name) setBrandName(settings.brand_name);
       if (settings.tagline) setTagline(settings.tagline);
@@ -128,20 +137,21 @@ export const AdminBrandingPage: React.FC = () => {
       if (settings.about_story) setAboutStory(settings.about_story);
       if (settings.footer_text) setFooterText(settings.footer_text);
 
-      setBrandingData({
-        logoUrl: settings.logo_url || storeLogo || undefined,
-        faviconUrl: settings.favicon_url || undefined,
-        heroBanner: settings.hero_banner_url || storeHeroBanner || undefined,
-        eventBanner: settings.popup_banner_image || undefined,
-        qrisImage: paymentSettings?.qris_image || undefined,
-        bankAccountImage: (paymentSettings as any)?.bank_account_image || undefined,
-        highlightImage0: settings.highlight_images?.[0] || 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
-        highlightImage1: settings.highlight_images?.[1] || 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
-        igFeed0: settings.instagram_feed_images?.[0] || 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
-        igFeed1: settings.instagram_feed_images?.[1] || 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
-        igFeed2: settings.instagram_feed_images?.[2] || 'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
-        igFeed3: settings.instagram_feed_images?.[3] || 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
-      });
+      setBrandingData((prev) => ({
+        ...prev,
+        logoUrl: settings.logo_url || storeLogo || prev.logoUrl || undefined,
+        faviconUrl: settings.favicon_url || prev.faviconUrl || undefined,
+        heroBanner: settings.hero_banner_url || storeHeroBanner || prev.heroBanner || undefined,
+        eventBanner: settings.popup_banner_image || prev.eventBanner || undefined,
+        qrisImage: paymentSettings?.qris_image || prev.qrisImage || undefined,
+        bankAccountImage: (paymentSettings as any)?.bank_account_image || prev.bankAccountImage || undefined,
+        highlightImage0: settings.highlight_images?.[0] || prev.highlightImage0 || 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
+        highlightImage1: settings.highlight_images?.[1] || prev.highlightImage1 || 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
+        igFeed0: settings.instagram_feed_images?.[0] || prev.igFeed0 || 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
+        igFeed1: settings.instagram_feed_images?.[1] || prev.igFeed1 || 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
+        igFeed2: settings.instagram_feed_images?.[2] || prev.igFeed2 || 'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
+        igFeed3: settings.instagram_feed_images?.[3] || prev.igFeed3 || 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
+      }));
     }
   }, [settings, storeLogo, storeHeroBanner, paymentSettings]);
 
@@ -154,13 +164,21 @@ export const AdminBrandingPage: React.FC = () => {
   // SAVE COMPRESSED / CROPPED IMAGE TO FIRESTORE (DIRECT & REAL-TIME)
   // =========================================================================
   const saveImageToFirestore = async (keyType: string, base64Image: string, label: string) => {
+    isSavingRef.current = true;
+    setIsSaving(true);
+    setUploadingKeys((prev) => ({ ...prev, [keyType]: true }));
+
     try {
-      setUploadingKeys((prev) => ({ ...prev, [keyType]: true }));
+      // 1. Ensure compressed quality with safe fallback
+      let compressedBase64 = base64Image;
+      try {
+        compressedBase64 = await hardCompressImage(base64Image, 800, 0.6, 180);
+      } catch (compErr) {
+        console.warn('Canvas hard compress fallback to original base64:', compErr);
+        compressedBase64 = base64Image;
+      }
 
-      // Ensure compressed quality
-      const compressedBase64 = await hardCompressImage(base64Image, 800, 0.6, 180);
-
-      // 1. Update State Lokal
+      // 2. Update local state immediately
       setBrandingData((prev) => ({ ...prev, [keyType]: compressedBase64 }));
 
       // Mapping payload
@@ -173,12 +191,20 @@ export const AdminBrandingPage: React.FC = () => {
       const storeConfigPayload: Partial<SiteSettings> = {};
       if (keyType === 'logoUrl' || keyType === 'logo_url') {
         storeConfigPayload.logo_url = compressedBase64;
+        generalPayload.logo_url = compressedBase64;
+        generalPayload.logoUrl = compressedBase64;
       } else if (keyType === 'faviconUrl' || keyType === 'favicon_url') {
         storeConfigPayload.favicon_url = compressedBase64;
+        generalPayload.favicon_url = compressedBase64;
+        generalPayload.faviconUrl = compressedBase64;
       } else if (keyType === 'heroBanner' || keyType === 'hero_banner_url') {
         storeConfigPayload.hero_banner_url = compressedBase64;
+        generalPayload.hero_banner_url = compressedBase64;
+        generalPayload.heroBanner = compressedBase64;
       } else if (keyType === 'eventBanner' || keyType === 'popup_banner_image') {
         storeConfigPayload.popup_banner_image = compressedBase64;
+        generalPayload.popup_banner_image = compressedBase64;
+        generalPayload.eventBanner = compressedBase64;
       } else if (keyType.startsWith('highlightImage')) {
         const idx = parseInt(keyType.replace('highlightImage', ''), 10);
         const currentHighlights = settings?.highlight_images && settings.highlight_images.length > 0
@@ -205,7 +231,7 @@ export const AdminBrandingPage: React.FC = () => {
         generalPayload.instagram_feed_images = currentFeeds;
       }
 
-      // 2. Direct Firestore Save
+      // 3. Direct Firestore Save to store_settings/general
       await setDoc(doc(db, 'store_settings', 'general'), generalPayload, { merge: true });
 
       if (Object.keys(storeConfigPayload).length > 0) {
@@ -226,12 +252,16 @@ export const AdminBrandingPage: React.FC = () => {
         } as any);
       }
 
-      showToast('success', `${label} berhasil di-crop & disimpan langsung ke Firestore ♡`);
+      // Grace period (500ms) to allow Firestore onSnapshot echoes to settle without flicker
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      showToast('success', `${label} berhasil di-crop & disimpan ke database ♡`);
     } catch (err: any) {
       console.error('Gagal simpan ke Firestore:', err);
-      showToast('error', 'Gagal menyimpan foto ke database: ' + err.message);
+      showToast('error', 'Gagal menyimpan foto ke database: ' + (err?.message || err));
     } finally {
       setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
+      isSavingRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -248,20 +278,30 @@ export const AdminBrandingPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploadingKeys((prev) => ({ ...prev, [keyType]: true }));
+
     const reader = new FileReader();
     reader.onload = (event) => {
-      if (event.target?.result) {
-        // Open Crop Modal directly with chosen image
-        setActiveCrop({
-          keyType,
-          label,
-          imageSrc: event.target.result as string,
-          defaultAspect,
-          aspectOptions,
-        });
+      try {
+        if (event.target?.result) {
+          // Open Crop Modal directly with chosen image
+          setActiveCrop({
+            keyType,
+            label,
+            imageSrc: event.target.result as string,
+            defaultAspect,
+            aspectOptions,
+          });
+        }
+      } catch (err) {
+        console.error('FileReader load error:', err);
+        showToast('error', 'Gagal memproses file foto.');
+      } finally {
+        setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
       }
     };
     reader.onerror = () => {
+      setUploadingKeys((prev) => ({ ...prev, [keyType]: false }));
       showToast('error', 'Gagal membaca file dari perangkat.');
     };
     reader.readAsDataURL(file);
@@ -292,6 +332,8 @@ export const AdminBrandingPage: React.FC = () => {
   const handleRemoveImage = async (keyType: string, label: string) => {
     if (!window.confirm(`Hapus ${label}?`)) return;
 
+    isSavingRef.current = true;
+    setIsSaving(true);
     setBrandingData((prev) => ({ ...prev, [keyType]: undefined }));
 
     try {
@@ -314,45 +356,127 @@ export const AdminBrandingPage: React.FC = () => {
         await savePaymentSettings({ ...paymentSettings, bank_account_image: undefined } as any);
       }
 
+      await new Promise((resolve) => setTimeout(resolve, 500));
       showToast('success', `${label} berhasil dihapus.`);
     } catch (err: any) {
-      showToast('error', 'Gagal menghapus foto: ' + err.message);
+      showToast('error', 'Gagal menghapus foto: ' + (err?.message || err));
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
     }
   };
 
-  // --- SAVE ALL GLOBAL TEXT BRANDING TO FIRESTORE ---
+  // =========================================================================
+  // 1 & 2. SAVE ALL GLOBAL BRANDING (WITH RACE CONDITION FIX & AWAIT VERIFY)
+  // =========================================================================
   const handleSaveAll = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    // Set flag penanda isSaving agar listener onSnapshot tidak menimpa state form lokal
+    isSavingRef.current = true;
+    setIsSaving(true);
     setIsSavingGlobal(true);
+
     try {
-      const payload: Partial<SiteSettings> = {
-        brand_name: brandName.trim(),
-        tagline: tagline.trim(),
-        sub_tagline: subTagline.trim(),
-        announcement_banner: announcementBanner.trim(),
-        instagram: instagram.trim(),
-        whatsapp_number: whatsappNumber.trim(),
-        location: location.trim(),
-        offline_spot: offlineSpot.trim(),
-        offline_schedule: offlineSchedule.trim(),
-        about_story: aboutStory.trim(),
-        footer_text: footerText.trim(),
+      const safeBrandName = safeTrim(brandName) || 'DISSOF.ID';
+      const safeTagline = safeTrim(tagline) || 'everything is heartmade♡';
+      const safeSubTagline = safeTrim(subTagline) || 'handmade accessories & little treasures';
+      const safeAnnouncement = safeTrim(announcementBanner);
+      const safeInstagram = safeTrim(instagram) || '@dissof.id';
+      const safeWhatsapp = safeTrim(whatsappNumber) || '6282284901234';
+      const safeLoc = safeTrim(location) || 'Dumai, Riau';
+      const safeSpot = safeTrim(offlineSpot) || 'Dumai Pop-Up Store / Bazaars';
+      const safeSched = safeTrim(offlineSchedule) || 'Setiap Sabtu & Minggu Malam (19.00 - 23.00 WIB)';
+      const safeStory = safeTrim(aboutStory);
+      const safeFooter = safeTrim(footerText);
+
+      // Latest Base64 images from current local state
+      const currentHighlights = [
+        brandingData.highlightImage0 || settings?.highlight_images?.[0] || 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&auto=format&fit=crop&q=80',
+        brandingData.highlightImage1 || settings?.highlight_images?.[1] || 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=700&auto=format&fit=crop&q=80',
+      ];
+
+      const currentFeeds = [
+        brandingData.igFeed0 || settings?.instagram_feed_images?.[0] || 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=600&auto=format&fit=crop&q=80',
+        brandingData.igFeed1 || settings?.instagram_feed_images?.[1] || 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&auto=format&fit=crop&q=80',
+        brandingData.igFeed2 || settings?.instagram_feed_images?.[2] || 'https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&auto=format&fit=crop&q=80',
+        brandingData.igFeed3 || settings?.instagram_feed_images?.[3] || 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&auto=format&fit=crop&q=80',
+      ];
+
+      const updatedData: Record<string, any> = {
+        brand_name: safeBrandName,
+        tagline: safeTagline,
+        sub_tagline: safeSubTagline,
+        announcement_banner: safeAnnouncement,
+        instagram: safeInstagram,
+        whatsapp_number: safeWhatsapp,
+        location: safeLoc,
+        offline_spot: safeSpot,
+        offline_schedule: safeSched,
+        about_story: safeStory,
+        footer_text: safeFooter,
+        logoUrl: brandingData.logoUrl || '',
+        logo_url: brandingData.logoUrl || '',
+        faviconUrl: brandingData.faviconUrl || '',
+        favicon_url: brandingData.faviconUrl || '',
+        heroBanner: brandingData.heroBanner || '',
+        hero_banner_url: brandingData.heroBanner || '',
+        eventBanner: brandingData.eventBanner || '',
+        popup_banner_image: brandingData.eventBanner || '',
+        qrisImage: brandingData.qrisImage || '',
+        bankAccountImage: brandingData.bankAccountImage || '',
+        highlight_images: currentHighlights,
+        instagram_feed_images: currentFeeds,
+        updatedAt: new Date().toISOString(),
       };
 
-      await saveSettingsLocal(payload);
+      // 1. Direct Save to Firestore Doc 'store_settings/general'
+      await setDoc(doc(db, 'store_settings', 'general'), updatedData, { merge: true });
 
-      // Also persist to store_settings/general
-      await setDoc(doc(db, 'store_settings', 'general'), {
-        ...payload,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      // 2. Also persist to settings/store_config
+      await saveSettingsLocal({
+        brand_name: safeBrandName,
+        tagline: safeTagline,
+        sub_tagline: safeSubTagline,
+        announcement_banner: safeAnnouncement,
+        instagram: safeInstagram,
+        whatsapp_number: safeWhatsapp,
+        location: safeLoc,
+        offline_spot: safeSpot,
+        offline_schedule: safeSched,
+        about_story: safeStory,
+        footer_text: safeFooter,
+        logo_url: brandingData.logoUrl || undefined,
+        favicon_url: brandingData.faviconUrl || undefined,
+        hero_banner_url: brandingData.heroBanner || undefined,
+        popup_banner_image: brandingData.eventBanner || undefined,
+        highlight_images: currentHighlights,
+        instagram_feed_images: currentFeeds,
+      });
 
-      alert('Pengaturan Berhasil Disimpan!');
-      showToast('success', 'Pengaturan Berhasil Disimpan! Real-time live ke seluruh HP pembeli ♡');
+      // 3. Sync payment settings if QRIS/bank image exist
+      if (brandingData.qrisImage !== undefined || brandingData.bankAccountImage !== undefined) {
+        await savePaymentSettings({
+          ...paymentSettings,
+          qris_image: brandingData.qrisImage,
+          bank_account_image: brandingData.bankAccountImage,
+        } as any);
+      }
+
+      // Jeda 500ms agar Firestore onSnapshot roundtrip selesai sempurna
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Berikan notifikasi sukses hanya setelah proses simpan await selesai 100%
+      alert('Pengaturan Branding Berhasil Disimpan!');
+      showToast('success', 'Pengaturan Branding Berhasil Disimpan!');
     } catch (err: any) {
-      alert('Gagal menyimpan: ' + err.message);
-      showToast('error', err.message || 'Gagal menyimpan pengaturan branding.');
+      console.error('Gagal menyimpan branding:', err);
+      alert('Gagal menyimpan: ' + (err?.message || err));
+      showToast('error', err?.message || 'Gagal menyimpan pengaturan branding.');
     } finally {
+      // Pastikan semua state loading selalu di-reset
+      isSavingRef.current = false;
+      setIsSaving(false);
       setIsSavingGlobal(false);
     }
   };
@@ -538,7 +662,7 @@ export const AdminBrandingPage: React.FC = () => {
             Pengaturan Toko &amp; Branding DISSOF.ID ♡
           </h1>
           <p className="text-xs text-[#7A6A61] mt-1 font-medium max-w-3xl">
-            Semua foto (Logo, Favicon, Banner Hero, QRIS, Rekening Bank, Banner Event Pop-Up, Highlight Kerajinan, dan Galeri Instagram) kini dapat di-crop, di-zoom, diputar, dan disesuaikan rasionya secara bebas sebelum disimpan ke Firestore.
+            Semua foto (Logo, Favicon, Banner Hero, QRIS, Rekening Bank, Banner Event Pop-Up, Highlight Kerajinan, dan Galeri Instagram) kini dapat di-crop, di-zoom, diputar, dan disesuaikan rasionya secara bebas sebelum disimpan ke Firestore secara real-time.
           </p>
         </div>
 
@@ -987,10 +1111,10 @@ export const AdminBrandingPage: React.FC = () => {
         <button
           type="button"
           onClick={() => handleSaveAll()}
-          disabled={isSavingGlobal}
+          disabled={isSaving || isSavingGlobal}
           className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-600 hover:to-rose-600 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-pink-200 hover:shadow-xl hover:scale-102 active:scale-98 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
         >
-          {isSavingGlobal ? (
+          {isSaving || isSavingGlobal ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin text-white" />
               <span>Menyimpan ke Firestore...</span>

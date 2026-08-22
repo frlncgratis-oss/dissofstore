@@ -18,11 +18,13 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronRight,
-  Eye
+  Eye,
+  Crop
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { formatIDR, createWhatsAppLink, compressImageFile, isQuotaExceededError, safeString, safeTrim, safeToLowerCase } from '../../lib/utils';
+import { formatIDR, createWhatsAppLink, compressImageFile, isQuotaExceededError, safeString, safeTrim, safeToLowerCase, hardCompressImage, getImageSizeInKB } from '../../lib/utils';
 import { ImageWithFallback } from '../common/ImageWithFallback';
+import { ImageCropModal, AspectRatioOption } from '../common/ImageCropModal';
 import { Order } from '../../types';
 import confetti from 'canvas-confetti';
 
@@ -70,6 +72,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
   } | null>(null);
 
   const [previewProofModal, setPreviewProofModal] = useState<string | null>(null);
+  const [cropProofModalOpen, setCropProofModalOpen] = useState(false);
+  const [cropProofSrc, setCropProofSrc] = useState<string | null>(null);
 
   const proofInputRef = useRef<HTMLInputElement>(null);
 
@@ -101,50 +105,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
         return;
       }
 
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          // Ultra-light compression: max width/height 500px, JPEG quality 0.4 (target < 50KB)
-          const maxDim = 500;
-          if (width > height && width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-          canvas.width = Math.max(1, width);
-          canvas.height = Math.max(1, height);
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            // White clean background
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.4);
-            setProofImage(compressedBase64);
-          } else {
-            setProofImage(result);
-          }
-        } catch (err) {
-          console.warn('Canvas compression error, using original data URL:', err);
-          setProofImage(result);
-        } finally {
-          setErrorMsg('');
-          setUploadingProof(false);
-        }
-      };
-
-      img.onerror = () => {
-        setProofImage(result); // Fallback jika kompresi gagal
-        setErrorMsg('');
-        setUploadingProof(false);
-      };
-
-      img.src = result;
+      // Open Crop Modal immediately so user can crop transfer proof receipt
+      setCropProofSrc(result);
+      setCropProofModalOpen(true);
+      setUploadingProof(false);
     };
 
     reader.onerror = () => {
@@ -154,6 +118,23 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
 
     reader.readAsDataURL(file);
     if (e.target) e.target.value = '';
+  };
+
+  const handleProofCropComplete = async (croppedBase64: string) => {
+    setUploadingProof(true);
+    setErrorMsg('');
+    try {
+      // Compress cropped image with high efficiency: max 800px, JPEG 0.5, target < 120 KB
+      const compressed = await hardCompressImage(croppedBase64, 800, 0.5, 120);
+      setProofImage(compressed);
+    } catch (err) {
+      console.warn('Canvas compression error, using cropped base64 directly:', err);
+      setProofImage(croppedBase64);
+    } finally {
+      setCropProofModalOpen(false);
+      setCropProofSrc(null);
+      setUploadingProof(false);
+    }
   };
 
   const handleCheckout = async (e: React.FormEvent) => {
@@ -798,6 +779,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                                         <span>Perbesar</span>
                                       </button>
 
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCropProofSrc(proofImage);
+                                          setCropProofModalOpen(true);
+                                        }}
+                                        className="text-[10px] font-bold text-pink-700 hover:text-pink-800 flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-pink-200 shadow-2xs"
+                                      >
+                                        <Crop className="w-3 h-3 text-pink-600" />
+                                        <span>Crop Foto</span>
+                                      </button>
+
                                       <label
                                         htmlFor="qris-proof-input"
                                         style={{ cursor: 'pointer' }}
@@ -958,6 +951,28 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
             </button>
           </div>
         </div>
+      )}
+
+      {/* Image Crop Modal for Transfer Proof */}
+      {cropProofModalOpen && cropProofSrc && (
+        <ImageCropModal
+          isOpen={true}
+          imageSrc={cropProofSrc}
+          title="Crop & Sesuaikan Bukti Transfer / QRIS"
+          description="Sesuaikan bingkai agar nominal, nomor referensi, dan tanggal transfer terlihat jelas."
+          defaultAspect={undefined}
+          aspectOptions={[
+            { label: 'Bebas', value: undefined, badge: 'Free Crop' },
+            { label: '4:3 Normal', value: 4 / 3, badge: 'Struk ATM' },
+            { label: '1:1 Persegi', value: 1, badge: 'Square' },
+            { label: '16:9 Wide', value: 16 / 9, badge: 'Landscape' },
+          ]}
+          onCropComplete={handleProofCropComplete}
+          onClose={() => {
+            setCropProofModalOpen(false);
+            setCropProofSrc(null);
+          }}
+        />
       )}
 
     </div>

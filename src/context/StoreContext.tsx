@@ -1071,7 +1071,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Update local state immediately for instant feedback
     const updatedOrders = [newOrder, ...orders.filter((o) => !isSampleDummyOrderId(o.id))];
     setOrders(updatedOrders);
-    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
+    safeLocalStorageSet(ORDERS_STORAGE_KEY, JSON.stringify(updatedOrders));
+    idbSaveAll('orders', updatedOrders).catch(() => {});
 
     // Push to Firestore Online Database (Directly triggers Admin's dashboard in real-time)
     try {
@@ -1082,8 +1083,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       });
       await setDoc(doc(db, 'orders', newOrderId), cleanOrderPayload);
-    } catch (e) {
-      console.warn('Failed to sync new order to Firestore:', e);
+    } catch (e: any) {
+      if (isQuotaExceededError(e)) {
+        console.warn(
+          '[Firebase Quota Bypass] Firebase Quota Exceeded. Order successfully preserved in LocalStorage/IndexedDB:',
+          e
+        );
+      } else {
+        console.warn('Failed to sync new order to Firestore (saved locally):', e);
+      }
     }
 
     window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: newOrder }));

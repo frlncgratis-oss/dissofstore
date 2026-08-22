@@ -21,8 +21,9 @@ import {
   Eye
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { formatIDR, createWhatsAppLink, compressImageFile } from '../../lib/utils';
+import { formatIDR, createWhatsAppLink, compressImageFile, isQuotaExceededError } from '../../lib/utils';
 import { ImageWithFallback } from '../common/ImageWithFallback';
+import { Order } from '../../types';
 import confetti from 'canvas-confetti';
 
 interface CartDrawerProps {
@@ -64,6 +65,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     paymentMethod: string;
     customerName: string;
     customerPhone: string;
+    isQuotaFallback?: boolean;
+    waUrl?: string;
   } | null>(null);
 
   const [previewProofModal, setPreviewProofModal] = useState<string | null>(null);
@@ -104,20 +107,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const maxDim = 800;
+          // Ultra-light compression: max width/height 500px, JPEG quality 0.4 (target < 50KB)
+          const maxDim = 500;
           if (width > height && width > maxDim) {
-            height *= maxDim / width;
+            height = Math.round((height * maxDim) / width);
             width = maxDim;
           } else if (height > maxDim) {
-            width *= maxDim / height;
+            width = Math.round((width * maxDim) / height);
             height = maxDim;
           }
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
           const ctx = canvas.getContext('2d');
           if (ctx) {
+            // White clean background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.4);
             setProofImage(compressedBase64);
           } else {
             setProofImage(result);
@@ -170,9 +177,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
     setErrorMsg('');
     setIsSubmitting(true);
 
+    let createdOrder: Order | null = null;
+    let isQuotaFallback = false;
+
     try {
       // 1. Create order in Firestore & LocalStorage
-      const createdOrder = await createOrderLocal({
+      createdOrder = await createOrderLocal({
         customer_name: customerName.trim(),
         customer_whatsapp: customerPhone.trim(),
         customer_address: customerAddress.trim(),
@@ -181,66 +191,117 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
         payment_proof: proofImage || undefined,
         payment_proof_url: proofImage || undefined,
       });
-
-      // 2. Confetti celebration
-      confetti({
-        particleCount: 90,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#F472B6', '#FB7185', '#C084FC', '#FDE047', '#A7F3D0'],
-      });
-
-      // 3. If WhatsApp method, prepare and launch WhatsApp link
-      if (paymentMethod === 'whatsapp') {
-        let itemsText = '';
-        cart.forEach((item, index) => {
-          itemsText += `${index + 1}. *${item.product.name}*\n`;
-          if (item.selectedVariant) {
-            itemsText += `   • Varian: ${item.selectedVariant}\n`;
-          }
-          if (item.customNote) {
-            itemsText += `   • Inisial/Catatan: ${item.customNote}\n`;
-          }
-          itemsText += `   • Jumlah: ${item.quantity} pcs x ${formatIDR(item.product.price)} = *${formatIDR(item.product.price * item.quantity)}*\n\n`;
-        });
-
-        const waNumber = settings?.whatsapp_number || '6282284901234';
-        const msg = `Halo ${settings?.brand_name || 'DISSOF.ID'} ♡\nSaya ingin memesan order *#${createdOrder.id}*:\n\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `👤 *Data Pemesan:*\n` +
-          `• Nama: ${customerName}\n` +
-          `• No. HP / WA: ${customerPhone}\n` +
-          (customerAddress ? `• Alamat: ${customerAddress}\n` : '') +
-          `━━━━━━━━━━━━━━━━━━━\n\n` +
-          `🛍️ *Daftar Item:*\n` +
-          itemsText +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `💰 *Total:* *${formatIDR(cartSubtotal)}*\n` +
-          (orderNotes ? `📝 *Catatan:* ${orderNotes}\n` : '') +
-          `💳 *Metode:* Checkout WhatsApp\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `Mohon proses pesanan saya ya kak ♡`;
-
-        const waUrl = createWhatsAppLink(waNumber, msg);
-        window.open(waUrl, '_blank');
-      }
-
-      // 4. Set order success state
-      setOrderSuccess({
-        orderId: createdOrder.id,
-        total: cartSubtotal,
-        paymentMethod: paymentMethod === 'bank_transfer' ? 'Transfer Bank / QRIS' : 'WhatsApp Checkout',
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim(),
-      });
-
-      // 5. Clear cart
-      clearCart();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal memproses pesanan.');
-    } finally {
-      setIsSubmitting(false);
+      // Automatic Fallback when Firestore Quota is full/exceeded
+      if (
+        isQuotaExceededError(err) ||
+        err?.message?.toLowerCase().includes('quota') ||
+        err?.message?.toLowerCase().includes('exceeded') ||
+        err?.message?.toLowerCase().includes('resource-exhausted')
+      ) {
+        console.warn('[Checkout Quota Fallback] Firestore Quota Exceeded. Directing order to WhatsApp Admin:', err);
+        isQuotaFallback = true;
+        const newOrderId = `ORD-${Date.now().toString().slice(-6)}`;
+        createdOrder = {
+          id: newOrderId,
+          customer_name: customerName.trim(),
+          customer_whatsapp: customerPhone.trim(),
+          customer_address: customerAddress.trim() || 'Dumai (Ambil di tempat / Kirim)',
+          items: cart.map((item) => ({
+            product_id: item.product.id,
+            product_name: item.product.name,
+            price: item.product.price,
+            quantity: item.quantity,
+            variant: item.selectedVariant,
+            custom_note: item.customNote,
+            image: item.product.images?.[0],
+          })) as any,
+          subtotal: cartSubtotal,
+          total: cartSubtotal,
+          order_notes: orderNotes.trim(),
+          notes: orderNotes.trim(),
+          source: 'online',
+          payment_method: paymentMethod,
+          payment_proof: proofImage || undefined,
+          payment_proof_url: proofImage || undefined,
+          status: 'Pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        setErrorMsg(err.message || 'Gagal memproses pesanan. Silakan coba lagi.');
+        setIsSubmitting(false);
+        return;
+      }
     }
+
+    if (!createdOrder) {
+      setErrorMsg('Gagal memproses pesanan. Silakan coba lagi.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    // 2. Confetti celebration
+    confetti({
+      particleCount: 90,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#F472B6', '#FB7185', '#C084FC', '#FDE047', '#A7F3D0'],
+    });
+
+    // 3. Prepare formatted WhatsApp Order Message
+    let itemsText = '';
+    cart.forEach((item, index) => {
+      itemsText += `${index + 1}. *${item.product.name}*\n`;
+      if (item.selectedVariant) {
+        itemsText += `   • Varian: ${item.selectedVariant}\n`;
+      }
+      if (item.customNote) {
+        itemsText += `   • Inisial/Catatan: ${item.customNote}\n`;
+      }
+      itemsText += `   • Jumlah: ${item.quantity} pcs x ${formatIDR(item.product.price)} = *${formatIDR(item.product.price * item.quantity)}*\n\n`;
+    });
+
+    const waNumber = settings?.whatsapp_number || '6282284901234';
+    const isTransfer = paymentMethod === 'bank_transfer';
+    const msg = `Halo ${settings?.brand_name || 'DISSOF.ID'} ♡\nSaya ingin memesan order *#${createdOrder.id}*:\n\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 *Data Pemesan:*\n` +
+      `• Nama: ${customerName}\n` +
+      `• No. HP / WA: ${customerPhone}\n` +
+      (customerAddress ? `• Alamat: ${customerAddress}\n` : '') +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
+      `🛍️ *Daftar Item:*\n` +
+      itemsText +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `💰 *Total:* *${formatIDR(cartSubtotal)}*\n` +
+      (orderNotes ? `📝 *Catatan:* ${orderNotes}\n` : '') +
+      `💳 *Metode:* ${isTransfer ? 'Transfer Bank / QRIS (Bukti Transfer Siap Dikirim)' : 'Checkout WhatsApp'}\n` +
+      (isQuotaFallback ? `⚡ *Status:* Konfirmasi Langsung via WhatsApp\n` : '') +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `Mohon proses pesanan saya ya kak ♡`;
+
+    const waUrl = createWhatsAppLink(waNumber, msg);
+
+    // Auto open WhatsApp on WhatsApp method OR when Quota Fallback is triggered
+    if (paymentMethod === 'whatsapp' || isQuotaFallback) {
+      window.open(waUrl, '_blank');
+    }
+
+    // 4. Set order success state
+    setOrderSuccess({
+      orderId: createdOrder.id,
+      total: cartSubtotal,
+      paymentMethod: paymentMethod === 'bank_transfer' ? 'Transfer Bank / QRIS' : 'WhatsApp Checkout',
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
+      isQuotaFallback,
+      waUrl,
+    });
+
+    // 5. Clear cart
+    clearCart();
+    setIsSubmitting(false);
   };
 
   const handleCloseAfterSuccess = () => {
@@ -310,6 +371,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onNavig
                     Pesanan kamu telah berhasil dicatat dan masuk ke sistem kami.
                   </p>
                 </div>
+
+                {/* Quota Fallback Banner Notice */}
+                {orderSuccess.isQuotaFallback && (
+                  <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-left text-xs text-amber-900 flex items-start gap-2.5 shadow-2xs">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-amber-950">Sistem sedang sibuk</p>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        Pesanan kamu akan diteruskan langsung ke WhatsApp Admin untuk dikonfirmasi.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Order Summary Card */}
                 <div className="bg-[#FAF7F2] p-5 rounded-2xl border border-pink-100 text-left text-xs space-y-2.5 shadow-2xs">
